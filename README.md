@@ -39,4 +39,32 @@ Flash and Monitor:
 idf.py -p /dev/tty.usbmodem1101 flash monitor
 ```
 
-almo
+zc2x_logger zc2x_config zc2x_event zc2x_bus zc2x_storage zc2x_can zc2x_gnss zc2x_wifi zc2x_http zc2x_nats zc2x_xbee zc2x_dashboard zc2x_ota
+
+6. Do any components include device_config.h?
+
+No.
+
+This is a rule I'd establish for the whole project:
+
+device_config.h
+│
+▼
+main.c
+│
+▼
+zc2x_config_init(...)
+│
+▼
+zc2x_config
+│
+▼
+ALL OTHER COMPONENTS
+
+Only main.c should include device_config.h.
+
+Every other component should obtain configuration through:
+
+const zc2x_config_t \*cfg = zc2x_config_get();
+
+This gives you one centralized runtime configuration object and prevents compile-time macros from leaking throughout the codebase.
