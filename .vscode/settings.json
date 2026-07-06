@@ -1,0 +1,18 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.extensionActivationMode": "always",
+  "idf.openOcdConfigs": ["board/esp32c6-builtin.cfg"],
+  "idf.port": "/dev/tty.usbmodem1101",
+  "idf.currentSetup": "/Users/rogeriocassares/.espressif/v6.0.2/esp-idf",
+  "idf.customExtraVars": {
+    "OPENOCD_SCRIPTS": "/Users/rogeriocassares/.espressif/tools/openocd-esp32/v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
+    "IDF_TARGET": "esp32c6"
+  },
+  "clangd.path": "/Users/rogeriocassares/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=/Users/rogeriocassares/Git/rogeriocassares/zc2x/build"
+  ],
+  "idf.flashType": "UART"
+}
