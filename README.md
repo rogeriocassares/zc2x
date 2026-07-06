@@ -11,8 +11,8 @@ source export.sh
 Go to project:
 
 ```sh
-cd ./zc2x/projects/rsu
-cd ./zc2x/projects/obu
+cd ./zc2x/firmware/rsu
+cd ./zc2x/firmware/obu
 ```
 
 Set the target:
