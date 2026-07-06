@@ -9,4 +9,5 @@ idf_component_register(
   zc2x_core
   zc2x_logger
   zc2x_config
+  zc2x_event
 )
