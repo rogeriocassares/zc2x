@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "zc2x_core.h"
 
 void app_main(void)
 {
+  zc2x_core_init();
   printf("\n");
   printf("=========================\n");
   printf(" ZC2X OBU\n");
@@ -12,7 +13,7 @@ void app_main(void)
 
   while (1)
   {
-    printf("RSU Alive\n");
+    printf("OBU Alive\n");
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }

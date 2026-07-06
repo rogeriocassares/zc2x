@@ -38,3 +38,5 @@ Flash and Monitor:
 ```sh
 idf.py -p /dev/tty.usbmodem1101 flash monitor
 ```
+
+almo
