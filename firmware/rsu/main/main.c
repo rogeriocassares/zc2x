@@ -7,6 +7,7 @@
 #include "zc2x_core.h"
 #include "zc2x_logger.h"
 #include "zc2x_config.h"
+#include "zc2x_event.h"
 
 void app_main(void)
 {
@@ -26,6 +27,15 @@ void app_main(void)
   printf("Device Name : %s\n", cfg->device_name);
 
   printf("Role        : %d\n", cfg->role);
+
+  zc2x_event_t event;
+
+  zc2x_event_init(
+      &event,
+      ZC2X_EVENT_BOOT);
+
+  printf("Boot Event Sequence: %lu\n",
+         (unsigned long)event.sequence);
 
   while (true)
   {
