@@ -1,3 +1,15 @@
+# ZC2X
+
+Open Source Embedded Streaming Platform
+
+Inspired by C-V2X
+
+Powered by ESP-IDF
+
+Part of the ZC8 Ecosystem.
+
+---
+
 Go to Project:
 
 Load the idf.py:

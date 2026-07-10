@@ -1,0 +1,19 @@
+services:
+  nats:
+    image: nats:2.12.4-alpine3.22
+    container_name: nats
+    restart: unless-stopped
+    command: "-c /etc/nats/nats.conf"
+    ports:
+      - "4222:4222" # TCP client port
+      - "4223:4223" # WebSocket port (browser direct access)
+      - "8222:8222" # Monitoring port
+    env_file:
+      - ./../../.env # Loads NATS_ACCOUNT_PUBKEY and NATS_INTERNAL_PASSWORD from repo root
+    volumes:
+      - nats_data:/data
+      - ../nats/nats.conf:/etc/nats/nats.conf:ro
+
+volumes:
+  nats_data:
+    driver: local
