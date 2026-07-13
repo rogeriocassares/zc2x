@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -454,7 +455,7 @@ static void nats_task(void *arg)
 
     nats_process(nats_sock);
 
-    ESP_LOGI(TAG, "→ NATS '%s' seq=%lu type=%u (%zu bytes)",
+    ESP_LOGI(TAG, "→ NATS src=rsu subject='%s' seq=%lu type=%u (%zu bytes)",
              RSU_NATS_SUBJECT,
              (unsigned long)pkt.sequence,
              pkt.type,
