@@ -8,11 +8,15 @@ Powered by ESP-IDF
 
 Part of the ZC8 Ecosystem.
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
+(data path, firmware roles, packet format) and [docs/README.md](docs/README.md)
+for the full documentation index.
+
 ---
 
-Go to Project:
+## Build & flash
 
-Load the idf.py:
+Load the ESP-IDF environment:
 
 ```sh
 cd ~/.espressif/v6.0.2/esp-idf/
@@ -20,17 +24,19 @@ cd ~/.espressif/v6.0.2/esp-idf/
 source export.sh
 ```
 
-Go to project:
+Go to a firmware project (`obu` and `rsu` target `esp32c6`; `ecu` targets `esp32s3`):
 
 ```sh
-cd ./zc2x/firmware/rsu
-cd ./zc2x/firmware/obu
+cd platform/esp-idf/firmware/obu
+cd platform/esp-idf/firmware/rsu
+cd platform/esp-idf/firmware/ecu
 ```
 
 Set the target:
 
 ```sh
-idf.py set-target esp32c6
+idf.py set-target esp32c6   # obu, rsu
+idf.py set-target esp32s3   # ecu
 ```
 
 Build:
@@ -45,38 +51,48 @@ Flash:
 idf.py -p /dev/tty.usbmodem1101 flash
 ```
 
-Flash and Monitor:
+Flash and monitor:
 
 ```sh
 idf.py -p /dev/tty.usbmodem1101 flash monitor
 ```
 
-zc2x_logger zc2x_config zc2x_event zc2x_bus zc2x_storage zc2x_can zc2x_gnss zc2x_wifi zc2x_http zc2x_nats zc2x_xbee zc2x_dashboard zc2x_ota
+## Shared components
 
-6. Do any components include device_config.h?
+`framework/core/packet` and `framework/core/types` are implemented and
+consumed by all three firmware targets. Everything else under `framework/`
+(`config`, `logger`, `bus`, `time`, `hal`, `protocols`, `services`,
+`transports`, `utilities`) is scaffolded but not yet implemented — see
+[docs/ARCHITECTURE.md §6](docs/ARCHITECTURE.md#6-implemented-vs-planned).
 
-No.
+## Configuration convention (aspirational)
 
-This is a rule I'd establish for the whole project:
+This is a rule established for the whole project — not yet followed by any
+current firmware, which reads `device_config.h` macros directly in `main.c`:
 
+```
 device_config.h
-│
-▼
-main.c
-│
-▼
+    │
+    ▼
+  main.c
+    │
+    ▼
 zc2x_config_init(...)
-│
-▼
+    │
+    ▼
 zc2x_config
-│
-▼
+    │
+    ▼
 ALL OTHER COMPONENTS
+```
 
-Only main.c should include device_config.h.
+Only `main.c` should include `device_config.h`. Every other component should
+obtain configuration through:
 
-Every other component should obtain configuration through:
+```c
+const zc2x_config_t *cfg = zc2x_config_get();
+```
 
-const zc2x_config_t \*cfg = zc2x_config_get();
-
-This gives you one centralized runtime configuration object and prevents compile-time macros from leaking throughout the codebase.
+This gives a single centralized runtime configuration object and prevents
+compile-time macros from leaking throughout the codebase. No component
+should include `device_config.h` directly.

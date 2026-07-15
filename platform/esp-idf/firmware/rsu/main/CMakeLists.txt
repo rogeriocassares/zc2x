@@ -10,6 +10,7 @@ idf_component_register(
   packet
   esp_driver_gpio
   esp_driver_uart
+  esp_timer
   esp_wifi
   esp_event
   esp_netif
