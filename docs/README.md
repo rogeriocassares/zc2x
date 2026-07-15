@@ -12,6 +12,7 @@ against them, don't invent new architecture ad hoc.
 | [STYLE_GUIDE.md](STYLE_GUIDE.md) | Coding conventions |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor workflow |
 | [architecture/RFC-0001-UNIVERSAL-PACKET.md](architecture/RFC-0001-UNIVERSAL-PACKET.md) | Universal Packet Specification — the design rationale behind `zc2x_packet_t` |
+| [architecture/zc2x-can2.dbc](architecture/zc2x-can2.dbc) | CAN2 signal database (Vector DBC format) — message/signal layout MoTeC M1 Tune transmits on CAN2; source of truth for `ecu/` simulator and `services/input/nats` signal decoding |
 
 ## Planned (not yet written)
 
