@@ -44,7 +44,7 @@ typedef struct {
   float extern_sensor;
   float middle_sensor;
   float internal_sensor;
-} __attribute__((packed)) data_packet_t;
+} data_packet_t;
 
 
 
@@ -103,15 +103,18 @@ static void can_tx_task(void *arg) {
     /* Persistent per-message storage — see the comment on
      * s_payload_buffers/s_frames above for why this can't be stack-local. */
     uint8_t id = data_packet.id;
-    uint16_t extern_sensor = data_packet.extern_sensor;
-    uint16_t middle_sensor = data_packet.middle_sensor;
-    uint16_t internal_sensor = data_packet.internal_sensor;
+    uint16_t extern_sensor_int   = (uint16_t)(data_packet.extern_sensor   * 100);
+    uint16_t middle_sensor_int   = (uint16_t)(data_packet.middle_sensor   * 100);
+    uint16_t internal_sensor_int = (uint16_t)(data_packet.internal_sensor * 100);
     uint8_t payload[8] = {
       0x00,
       0x00,
-        extern_sensor,
-        middle_sensor,
-        internal_sensor,
+      (extern_sensor_int >> 8) & 0xFF,
+      extern_sensor_int & 0xFF,
+      (middle_sensor_int >> 8) & 0xFF,
+      middle_sensor_int & 0xFF,
+      (internal_sensor_int >> 8) & 0xFF,
+      internal_sensor_int & 0xFF
     };
     uint16_t can_id = 0x00000000010;
     if (id != 0) {
@@ -128,6 +131,8 @@ static void can_tx_task(void *arg) {
         .buffer = payload,
         .buffer_len = sizeof(payload),
     };
+
+    ESP_LOGI(TAG, "values: e: %d, m: %d, i: %d", extern_sensor_int, middle_sensor_int, internal_sensor_int);
 
     esp_err_t err =
         twai_node_transmit(s_twai_node, &message_frame, pdMS_TO_TICKS(100));
@@ -171,9 +176,7 @@ static void esp_now_recv_cb(const esp_now_recv_info_t *recv_info,
 
   memcpy(&received_data, data, sizeof(received_data));
   ESP_LOGI(TAG, "Packet ID: %d", received_data.id);
-  ESP_LOGI(TAG, "Message: %s", received_data.extern_sensor);
-  ESP_LOGI(TAG, "Reading: %.2f", received_data.middle_sensor);
-  ESP_LOGI(TAG, "Reading: %.2f", received_data.internal_sensor);
+  ESP_LOGI(TAG, "Message: e:%f m:%f i:%f", received_data.extern_sensor, received_data.middle_sensor, received_data.internal_sensor);
   BaseType_t higher_task_woken = pdFALSE;
   xQueueSendFromISR(s_esp_now_queue, &received_data, &higher_task_woken);
 }
