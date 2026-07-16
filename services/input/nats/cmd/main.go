@@ -30,7 +30,7 @@ func main() {
 
 		SignalStreamName:       getenv("JETSTREAM_SIGNAL_STREAM", "ZC2X_SIGNALS"),
 		SignalStreamSubjects:   []string{signalPrefix + ">"},
-		SignalPublishSubjectFn: internal.DefaultSignalPublishSubject(signalPrefix),
+		SignalPublishSubjectFn: internal.DefaultSignalPublishSubject(signalPrefix, sourcePrefix),
 	}
 
 	adapter, err := internal.NewAdapter(cfg)

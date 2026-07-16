@@ -164,8 +164,12 @@ See the root [README.md](../README.md) for build/flash instructions.
 
 ## 8. CAN2 signals
 
-The full message/signal layout for CAN2 (MoTeC M180 → OBU) — 7 messages, 24
+The full message/signal layout for CAN2 (MoTeC M180 → OBU) — 9 messages, 28
 signals, grouped by update-rate tier — is defined in
 [architecture/zc2x-can2.dbc](architecture/zc2x-can2.dbc) (standard Vector DBC
-format). That file is the source of truth for the `ecu/` simulator and for
-signal decoding in `services/input/nats`; don't duplicate its contents here.
+format). Messages are named `CD#` (Chassis Dynamics) / `PE#` (Powertrain/
+Engine) / `GPS#` per MoTeC's generic dash/logger CAN naming convention,
+numbered rather than named after their exact field mix — see each message's
+`CM_ BO_` comment in the DBC for what it actually contains. That file is the
+source of truth for the `ecu/` simulator and for signal decoding in
+`services/input/nats`; don't duplicate its contents here.

@@ -51,6 +51,10 @@ static inline void put_u32(uint8_t *buf, size_t off, uint32_t v)
 {
   memcpy(&buf[off], &v, sizeof(v));
 }
+static inline void put_i32(uint8_t *buf, size_t off, int32_t v)
+{
+  memcpy(&buf[off], &v, sizeof(v));
+}
 
 /* -------------------------------------------------------------------------
  * Simulated vehicle state — one field per DBC signal, updated in place by
@@ -67,6 +71,13 @@ typedef struct
   float mat_c;
   uint32_t fuel_used_raw;
   float egt1_c, egt2_c, egt3_c;
+  /* double, not float: at 1e-7 deg/LSB resolution, a magnitude-~50 degree
+   * coordinate needs ~9 significant decimal digits — beyond float32's ~7
+   * digits of precision, which would round-trip incorrectly through the
+   * random walk below. Cheap on ESP32 (has FPU support for double), and
+   * this runs at only 10Hz. */
+  double gps_lat, gps_lon;
+  float gps_alt_m, gps_speed_kmh;
 } sim_state_t;
 
 static void sim_state_init(sim_state_t *s)
@@ -80,12 +91,33 @@ static void sim_state_init(sim_state_t *s)
       .coolant_c = 90, .oil_temp_c = 100, .oil_pressure_bar = 4, .fuel_line_bar = 4,
       .mat_c = 35, .fuel_used_raw = 0,
       .egt1_c = 750, .egt2_c = 750, .egt3_c = 750,
+      /* Arbitrary placeholder reference point — not any specific real
+       * track — the walk below just wanders within ~1km of it. */
+      .gps_lat = -23.5505, .gps_lon = -46.6333,
+      .gps_alt_m = 760, .gps_speed_kmh = 80,
   };
+}
+
+/* Same random walk as random_walk_f but for double, used only by
+ * lat/lon (see the precision comment on sim_state_t.gps_lat). */
+static double random_walk_d(double value, double step, double min, double max)
+{
+  double delta = ((double)esp_random() / (double)UINT32_MAX * 2.0 - 1.0) * step;
+  value += delta;
+  if (value < min)
+  {
+    value = min;
+  }
+  if (value > max)
+  {
+    value = max;
+  }
+  return value;
 }
 
 /* Bounded random walk: nudges value by up to +/-step, clamped to [min,max].
  * Used for every simulated signal except Gear (discrete state machine, see
- * encode_engine_core) and FuelUsedRaw (monotonic counter, same function). */
+ * encode_pe1) and FuelUsedRaw (monotonic counter, see encode_pe3). */
 static float random_walk_f(float value, float step, float min, float max)
 {
   float delta = ((float)esp_random() / (float)UINT32_MAX * 2.0f - 1.0f) * step;
@@ -106,7 +138,7 @@ static float random_walk_f(float value, float step, float min, float max)
  * signals, then packs them at the byte offsets and scales defined in
  * docs/architecture/zc2x-can2.dbc.
  * ---------------------------------------------------------------------- */
-static void encode_wheel_speeds(uint8_t *buf, sim_state_t *s)
+static void encode_cd1(uint8_t *buf, sim_state_t *s)
 {
   s->wheel_fl_kmh = random_walk_f(s->wheel_fl_kmh, 2.0f, 0, 260);
   s->wheel_fr_kmh = random_walk_f(s->wheel_fr_kmh, 2.0f, 0, 260);
@@ -118,7 +150,7 @@ static void encode_wheel_speeds(uint8_t *buf, sim_state_t *s)
   put_u16(buf, 6, (uint16_t)(s->wheel_rr_kmh / 0.1f));
 }
 
-static void encode_chassis_dynamics(uint8_t *buf, sim_state_t *s)
+static void encode_cd2(uint8_t *buf, sim_state_t *s)
 {
   s->steering_deg = random_walk_f(s->steering_deg, 8.0f, -450, 450);
   s->g_lat = random_walk_f(s->g_lat, 0.05f, -2.0f, 2.0f);
@@ -130,7 +162,7 @@ static void encode_chassis_dynamics(uint8_t *buf, sim_state_t *s)
   put_u16(buf, 6, (uint16_t)(s->ground_speed_kmh / 0.1f));
 }
 
-static void encode_brakes(uint8_t *buf, sim_state_t *s)
+static void encode_cd3(uint8_t *buf, sim_state_t *s)
 {
   s->brake_front_bar = random_walk_f(s->brake_front_bar, 3.0f, 0, 150);
   s->brake_rear_bar = random_walk_f(s->brake_rear_bar, 2.5f, 0, 130);
@@ -138,7 +170,7 @@ static void encode_brakes(uint8_t *buf, sim_state_t *s)
   put_u16(buf, 2, (uint16_t)(s->brake_rear_bar / 0.1f));
 }
 
-static void encode_engine_core(uint8_t *buf, sim_state_t *s)
+static void encode_pe1(uint8_t *buf, sim_state_t *s)
 {
   s->rpm = random_walk_f(s->rpm, 150.0f, 800, 14000);
   s->throttle_pct = random_walk_f(s->throttle_pct, 5.0f, 0, 100);
@@ -175,26 +207,32 @@ static void encode_engine_core(uint8_t *buf, sim_state_t *s)
   put_u8(buf, 7, s->gear);
 }
 
-static void encode_engine_temps_pressures(uint8_t *buf, sim_state_t *s)
+/* Engine temperatures + oil pressure — all thermally-slow signals grouped
+ * together (coolant, oil, intake air temp) regardless of exact subsystem,
+ * per the DBC's PE2 comment. Deliberately does NOT include fuel line
+ * pressure — see encode_pe3. */
+static void encode_pe2(uint8_t *buf, sim_state_t *s)
 {
   s->coolant_c = random_walk_f(s->coolant_c, 0.3f, 70, 110);
   s->oil_temp_c = random_walk_f(s->oil_temp_c, 0.3f, 80, 130);
+  s->mat_c = random_walk_f(s->mat_c, 0.2f, 15, 65);
   s->oil_pressure_bar = random_walk_f(s->oil_pressure_bar, 0.1f, 1.5f, 6.0f);
-  s->fuel_line_bar = random_walk_f(s->fuel_line_bar, 0.1f, 3.0f, 5.0f);
   put_i16(buf, 0, (int16_t)(s->coolant_c / 0.1f));
   put_i16(buf, 2, (int16_t)(s->oil_temp_c / 0.1f));
-  put_u16(buf, 4, (uint16_t)(s->oil_pressure_bar / 0.1f));
-  put_u16(buf, 6, (uint16_t)(s->fuel_line_bar / 0.1f));
+  put_i16(buf, 4, (int16_t)(s->mat_c / 0.1f));
+  put_u16(buf, 6, (uint16_t)(s->oil_pressure_bar / 0.1f));
 }
 
-static void encode_intake_temp_fuel_used(uint8_t *buf, sim_state_t *s)
+/* Fuel system only, kept separate from PE2's engine temps for a cleaner
+ * engine-vs-fuel split (see the DBC's PE3 comment). */
+static void encode_pe3(uint8_t *buf, sim_state_t *s)
 {
-  s->mat_c = random_walk_f(s->mat_c, 0.2f, 15, 65);
-  put_i16(buf, 0, (int16_t)(s->mat_c / 0.1f));
+  s->fuel_line_bar = random_walk_f(s->fuel_line_bar, 0.1f, 3.0f, 5.0f);
+  put_u16(buf, 0, (uint16_t)(s->fuel_line_bar / 0.1f));
   put_u32(buf, 2, s->fuel_used_raw);
 }
 
-static void encode_exhaust_temps(uint8_t *buf, sim_state_t *s)
+static void encode_pe4(uint8_t *buf, sim_state_t *s)
 {
   s->egt1_c = random_walk_f(s->egt1_c, 5.0f, 500, 950);
   s->egt2_c = random_walk_f(s->egt2_c, 5.0f, 500, 950);
@@ -202,6 +240,26 @@ static void encode_exhaust_temps(uint8_t *buf, sim_state_t *s)
   put_i16(buf, 0, (int16_t)s->egt1_c);
   put_i16(buf, 2, (int16_t)s->egt2_c);
   put_i16(buf, 4, (int16_t)s->egt3_c);
+}
+
+/* Step ~0.00002 deg/call (~2.2m at this call rate of once per 10 ticks =
+ * 100ms, i.e. ~22 m/s / ~79 km/h) wandering within ~1km of the placeholder
+ * reference point set in sim_state_init — a plausible-looking track loop,
+ * not a real one. */
+static void encode_gps1(uint8_t *buf, sim_state_t *s)
+{
+  s->gps_lat = random_walk_d(s->gps_lat, 0.00002, -23.5605, -23.5405);
+  s->gps_lon = random_walk_d(s->gps_lon, 0.00002, -46.6433, -46.6233);
+  put_i32(buf, 0, (int32_t)(s->gps_lat / 0.0000001));
+  put_i32(buf, 4, (int32_t)(s->gps_lon / 0.0000001));
+}
+
+static void encode_gps2(uint8_t *buf, sim_state_t *s)
+{
+  s->gps_alt_m = random_walk_f(s->gps_alt_m, 0.5f, 710, 810);
+  s->gps_speed_kmh = random_walk_f(s->gps_speed_kmh, 2.0f, 0, 260);
+  put_i16(buf, 0, (int16_t)(s->gps_alt_m / 0.1f));
+  put_u16(buf, 2, (uint16_t)(s->gps_speed_kmh / 0.1f));
 }
 
 /* -------------------------------------------------------------------------
@@ -220,20 +278,24 @@ typedef struct
 } can_msg_def_t;
 
 static const can_msg_def_t s_messages[] = {
-    {ECU_CAN_ID_WHEEL_SPEEDS, 8, ECU_CAN_PERIOD_WHEEL_SPEEDS_MS / ECU_CAN_TICK_MS,
-     encode_wheel_speeds, "WheelSpeeds"},
-    {ECU_CAN_ID_CHASSIS_DYNAMICS, 8, ECU_CAN_PERIOD_CHASSIS_DYNAMICS_MS / ECU_CAN_TICK_MS,
-     encode_chassis_dynamics, "ChassisDynamics"},
-    {ECU_CAN_ID_BRAKES, 4, ECU_CAN_PERIOD_BRAKES_MS / ECU_CAN_TICK_MS,
-     encode_brakes, "Brakes"},
-    {ECU_CAN_ID_ENGINE_CORE, 8, ECU_CAN_PERIOD_ENGINE_CORE_MS / ECU_CAN_TICK_MS,
-     encode_engine_core, "EngineCore"},
-    {ECU_CAN_ID_ENGINE_TEMPS_PRESSURES, 8, ECU_CAN_PERIOD_ENGINE_TEMPS_PRESSURES_MS / ECU_CAN_TICK_MS,
-     encode_engine_temps_pressures, "EngineTempsPressures"},
-    {ECU_CAN_ID_INTAKE_TEMP_FUEL_USED, 6, ECU_CAN_PERIOD_INTAKE_TEMP_FUEL_USED_MS / ECU_CAN_TICK_MS,
-     encode_intake_temp_fuel_used, "IntakeTempFuelUsed"},
-    {ECU_CAN_ID_EXHAUST_TEMPS, 6, ECU_CAN_PERIOD_EXHAUST_TEMPS_MS / ECU_CAN_TICK_MS,
-     encode_exhaust_temps, "ExhaustTemps"},
+    {ECU_CAN_ID_CD1, 8, ECU_CAN_PERIOD_CD1_MS / ECU_CAN_TICK_MS,
+     encode_cd1, "CD1"},
+    {ECU_CAN_ID_CD2, 8, ECU_CAN_PERIOD_CD2_MS / ECU_CAN_TICK_MS,
+     encode_cd2, "CD2"},
+    {ECU_CAN_ID_CD3, 4, ECU_CAN_PERIOD_CD3_MS / ECU_CAN_TICK_MS,
+     encode_cd3, "CD3"},
+    {ECU_CAN_ID_PE1, 8, ECU_CAN_PERIOD_PE1_MS / ECU_CAN_TICK_MS,
+     encode_pe1, "PE1"},
+    {ECU_CAN_ID_PE2, 8, ECU_CAN_PERIOD_PE2_MS / ECU_CAN_TICK_MS,
+     encode_pe2, "PE2"},
+    {ECU_CAN_ID_PE3, 6, ECU_CAN_PERIOD_PE3_MS / ECU_CAN_TICK_MS,
+     encode_pe3, "PE3"},
+    {ECU_CAN_ID_PE4, 6, ECU_CAN_PERIOD_PE4_MS / ECU_CAN_TICK_MS,
+     encode_pe4, "PE4"},
+    {ECU_CAN_ID_GPS1, 8, ECU_CAN_PERIOD_GPS1_MS / ECU_CAN_TICK_MS,
+     encode_gps1, "GPS1"},
+    {ECU_CAN_ID_GPS2, 4, ECU_CAN_PERIOD_GPS2_MS / ECU_CAN_TICK_MS,
+     encode_gps2, "GPS2"},
 };
 #define NUM_MESSAGES (sizeof(s_messages) / sizeof(s_messages[0]))
 

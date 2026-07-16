@@ -35,27 +35,38 @@
 /* CAN2 message IDs and periods (standard 11-bit IDs). Mirrors
  * docs/architecture/zc2x-can2.dbc — keep both in sync by hand. This is the
  * message/signal layout MoTeC M1 Tune transmits on CAN2 in production; here
- * it's simulated so OBU/RSU/services can be exercised without the car. */
-#define ECU_CAN_ID_WHEEL_SPEEDS 0x100U
-#define ECU_CAN_PERIOD_WHEEL_SPEEDS_MS 10U /* 100 Hz */
+ * it's simulated so OBU/RSU/services can be exercised without the car.
+ *
+ * Names follow MoTeC's generic dash/logger CAN convention: CD# = Chassis
+ * Dynamics, PE# = Powertrain/Engine, numbered per message rather than named
+ * after their exact field mix (see the DBC's CM_ BO_ comments for what each
+ * one actually contains). */
+#define ECU_CAN_ID_CD1 0x100U /* wheel speeds */
+#define ECU_CAN_PERIOD_CD1_MS 10U /* 100 Hz */
 
-#define ECU_CAN_ID_CHASSIS_DYNAMICS 0x110U
-#define ECU_CAN_PERIOD_CHASSIS_DYNAMICS_MS 10U /* 100 Hz */
+#define ECU_CAN_ID_CD2 0x110U /* steering angle, lateral/longitudinal G, ground speed */
+#define ECU_CAN_PERIOD_CD2_MS 10U /* 100 Hz */
 
-#define ECU_CAN_ID_BRAKES 0x120U
-#define ECU_CAN_PERIOD_BRAKES_MS 10U /* 100 Hz */
+#define ECU_CAN_ID_CD3 0x120U /* brake line pressures */
+#define ECU_CAN_PERIOD_CD3_MS 10U /* 100 Hz */
 
-#define ECU_CAN_ID_ENGINE_CORE 0x200U
-#define ECU_CAN_PERIOD_ENGINE_CORE_MS 20U /* 50 Hz */
+#define ECU_CAN_ID_PE1 0x200U /* RPM, throttle, lambda, MAP, gear */
+#define ECU_CAN_PERIOD_PE1_MS 20U /* 50 Hz */
 
-#define ECU_CAN_ID_ENGINE_TEMPS_PRESSURES 0x210U
-#define ECU_CAN_PERIOD_ENGINE_TEMPS_PRESSURES_MS 100U /* 10 Hz */
+#define ECU_CAN_ID_PE2 0x210U /* coolant/oil/intake air temp, oil pressure */
+#define ECU_CAN_PERIOD_PE2_MS 100U /* 10 Hz */
 
-#define ECU_CAN_ID_INTAKE_TEMP_FUEL_USED 0x211U
-#define ECU_CAN_PERIOD_INTAKE_TEMP_FUEL_USED_MS 100U /* 10 Hz */
+#define ECU_CAN_ID_PE3 0x211U /* fuel line pressure, cumulative fuel used */
+#define ECU_CAN_PERIOD_PE3_MS 100U /* 10 Hz */
 
-#define ECU_CAN_ID_EXHAUST_TEMPS 0x220U
-#define ECU_CAN_PERIOD_EXHAUST_TEMPS_MS 200U /* 5 Hz */
+#define ECU_CAN_ID_PE4 0x220U /* per-cylinder exhaust gas temperature */
+#define ECU_CAN_PERIOD_PE4_MS 200U /* 5 Hz */
+
+#define ECU_CAN_ID_GPS1 0x300U /* latitude, longitude */
+#define ECU_CAN_PERIOD_GPS1_MS 100U /* 10 Hz — matches a typical GPS receiver fix rate; adjust to your actual module */
+
+#define ECU_CAN_ID_GPS2 0x310U /* altitude, GPS-derived ground speed */
+#define ECU_CAN_PERIOD_GPS2_MS 100U /* 10 Hz */
 
 /* -----------------------------------------------------------------------
  * Tuning — queue/stack sizing. Bump these if you see TWAI tx timeouts or

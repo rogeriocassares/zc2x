@@ -34,53 +34,63 @@ BS_:
 
 BU_: ECU OBU
 
-BO_ 256 WheelSpeeds: 8 ECU
+BO_ 256 CD1: 8 ECU
  SG_ WheelSpeedFL : 0|16@1+ (0.1,0) [0|300] "km/h" OBU
  SG_ WheelSpeedFR : 16|16@1+ (0.1,0) [0|300] "km/h" OBU
  SG_ WheelSpeedRL : 32|16@1+ (0.1,0) [0|300] "km/h" OBU
  SG_ WheelSpeedRR : 48|16@1+ (0.1,0) [0|300] "km/h" OBU
 
-BO_ 272 ChassisDynamics: 8 ECU
+BO_ 272 CD2: 8 ECU
  SG_ SteeringAngle : 0|16@1- (0.1,0) [-720|720] "deg" OBU
  SG_ GForceLateral : 16|16@1- (0.001,0) [-5|5] "g" OBU
  SG_ GForceLongitudinal : 32|16@1- (0.001,0) [-5|5] "g" OBU
  SG_ GroundSpeed : 48|16@1+ (0.1,0) [0|300] "km/h" OBU
 
-BO_ 288 Brakes: 4 ECU
+BO_ 288 CD3: 4 ECU
  SG_ BrakePressureFront : 0|16@1+ (0.1,0) [0|200] "bar" OBU
  SG_ BrakePressureRear : 16|16@1+ (0.1,0) [0|200] "bar" OBU
 
-BO_ 512 EngineCore: 8 ECU
+BO_ 512 PE1: 8 ECU
  SG_ EngineRPM : 0|16@1+ (1,0) [0|16000] "rpm" OBU
  SG_ ThrottlePosition : 16|8@1+ (1,0) [0|100] "%" OBU
  SG_ Lambda1 : 24|16@1+ (0.001,0) [0.5|1.5] "" OBU
  SG_ ManifoldAirPressure : 40|16@1+ (0.1,0) [0|300] "kPa" OBU
  SG_ Gear : 56|8@1+ (1,0) [0|255] "" OBU
 
-BO_ 528 EngineTempsPressures: 8 ECU
+BO_ 528 PE2: 8 ECU
  SG_ EngineCoolantTemperature : 0|16@1- (0.1,0) [-40|150] "degC" OBU
  SG_ EngineOilTemperature : 16|16@1- (0.1,0) [-40|170] "degC" OBU
- SG_ EngineOilPressure : 32|16@1+ (0.1,0) [0|10] "bar" OBU
- SG_ FuelLinePressure : 48|16@1+ (0.1,0) [0|10] "bar" OBU
+ SG_ ManifoldAirTemperature : 32|16@1- (0.1,0) [-40|120] "degC" OBU
+ SG_ EngineOilPressure : 48|16@1+ (0.1,0) [0|10] "bar" OBU
 
-BO_ 529 IntakeTempFuelUsed: 6 ECU
- SG_ ManifoldAirTemperature : 0|16@1- (0.1,0) [-40|120] "degC" OBU
+BO_ 529 PE3: 6 ECU
+ SG_ FuelLinePressure : 0|16@1+ (0.1,0) [0|10] "bar" OBU
  SG_ FuelUsedRaw : 16|32@1+ (1,0) [0|4294967295] "" OBU
 
-BO_ 544 ExhaustTemps: 6 ECU
+BO_ 544 PE4: 6 ECU
  SG_ ExhaustCylinderTemperature1 : 0|16@1- (1,0) [0|1200] "degC" OBU
  SG_ ExhaustCylinderTemperature2 : 16|16@1- (1,0) [0|1200] "degC" OBU
  SG_ ExhaustCylinderTemperature3 : 32|16@1- (1,0) [0|1200] "degC" OBU
 
+BO_ 768 GPS1: 8 ECU
+ SG_ Latitude : 0|32@1- (0.0000001,0) [-90|90] "deg" OBU
+ SG_ Longitude : 32|32@1- (0.0000001,0) [-180|180] "deg" OBU
+
+BO_ 784 GPS2: 4 ECU
+ SG_ Altitude : 0|16@1- (0.1,0) [-1000|3276.7] "m" OBU
+ SG_ GPSSpeed : 16|16@1+ (0.1,0) [0|300] "km/h" OBU
+
 CM_ BU_ ECU "Vehicle CAN2 transmitter: the ecu/ firmware simulator in dev/test, or a MoTeC M180 ECU/logger's User CAN output on CAN2 in production. See platform/esp-idf/firmware/ecu/main/main.c and docs/architecture/RFC-0001-UNIVERSAL-PACKET.md.";
 CM_ BU_ OBU "ZC2X on-board unit; forwards every CAN ID unmodified over XBee/WiFi (see platform/esp-idf/firmware/obu/main/main.c can_init()).";
-CM_ BO_ 256 "Wheel speed sensors. 100 Hz.";
-CM_ BO_ 272 "Chassis dynamics: steering angle, lateral/longitudinal G, ground speed. 100 Hz.";
-CM_ BO_ 288 "Brake line pressures, front/rear. 100 Hz.";
-CM_ BO_ 512 "Core engine state: RPM, throttle, lambda, MAP, gear. 50 Hz.";
-CM_ BO_ 528 "Engine temperatures and pressures. 10 Hz.";
-CM_ BO_ 529 "Intake air temperature and cumulative fuel used. 10 Hz.";
-CM_ BO_ 544 "Per-cylinder exhaust gas temperature (EGT). 5 Hz.";
+CM_ BO_ 256 "Chassis Dynamics 1: wheel speed sensors. 100 Hz. Named per MoTeC's generic dash/logger CAN convention (CD#=chassis dynamics, PE#=powertrain/engine), grouped by subsystem+update-rate rather than describing each message's exact field mix.";
+CM_ BO_ 272 "Chassis Dynamics 2: steering angle, lateral/longitudinal G, ground speed. 100 Hz.";
+CM_ BO_ 288 "Chassis Dynamics 3: brake line pressures, front/rear. 100 Hz.";
+CM_ BO_ 512 "Powertrain/Engine 1: core engine operating point — RPM, throttle, lambda, MAP, gear. 50 Hz. ManifoldAirPressure is deliberately here and NOT with ManifoldAirTemperature in PE2, despite both being 'intake' signals: MAP changes fast (boost/vacuum transients on tip-in/tip-out, knock correlation) and needs to track RPM/throttle at the same rate to be useful for tuning, while MAT is thermally slow (intake tract thermal mass) and gains nothing from fast sampling. Undersampling MAP to 10Hz to reunite it with MAT would lose real transient fidelity, which matters more here than thematic tidiness. PE1 and PE2 are also each already a full 8 bytes — classic CAN's frame limit means physically merging them isn't a free reshuffle either; it would require displacing another signal or a new dedicated message.";
+CM_ BO_ 528 "Powertrain/Engine 2: engine temperatures + oil pressure — coolant, oil temp, intake air temp, oil pressure. 10 Hz. All thermally-slow signals grouped together regardless of exact subsystem (coolant/oil/intake), matching MoTeC's own convention of one temps message per engine. See PE1's comment for why ManifoldAirPressure isn't here too.";
+CM_ BO_ 529 "Powertrain/Engine 3: fuel system only — line pressure, cumulative fuel used. 10 Hz. Deliberately separate from PE2 (was merged with engine temps/intake before — moved out for a cleaner engine-vs-fuel split).";
+CM_ BO_ 544 "Powertrain/Engine 4: per-cylinder exhaust gas temperature (EGT). 5 Hz — thermally slower than PE2/PE3, doesn't need the same rate.";
+CM_ BO_ 768 "GPS 1: latitude/longitude, WGS84 decimal degrees, int32 @ 1e-7 deg/LSB (~1.1cm resolution) — needs the extra precision int16 can't give. 10 Hz assumed (typical GPS receiver fix rate); adjust ECU_CAN_PERIOD_GPS1_MS to match your actual module.";
+CM_ BO_ 784 "GPS 2: altitude (verify MSL vs WGS84-ellipsoid against your GPS module's datum config — the two can differ by tens of meters) and GPS-derived ground speed. 10 Hz. GPSSpeed is intentionally a separate signal from CD2's GroundSpeed (wheel/ECU-derived): logging both lets you cross-validate against wheel slip, banking, and GPS dropout.";
 CM_ SG_ 512 Gear "0=Neutral, 1-6=gear, 255=unknown. See VAL_ table below.";
 
 BA_DEF_ BO_ "GenMsgCycleTime" INT 0 1000000;
@@ -92,5 +102,7 @@ BA_ "GenMsgCycleTime" BO_ 512 20;
 BA_ "GenMsgCycleTime" BO_ 528 100;
 BA_ "GenMsgCycleTime" BO_ 529 100;
 BA_ "GenMsgCycleTime" BO_ 544 200;
+BA_ "GenMsgCycleTime" BO_ 768 100;
+BA_ "GenMsgCycleTime" BO_ 784 100;
 
 VAL_ 512 Gear 0 "Neutral" 1 "1st" 2 "2nd" 3 "3rd" 4 "4th" 5 "5th" 6 "6th" 255 "Unknown" ;
