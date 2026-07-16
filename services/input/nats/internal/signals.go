@@ -13,26 +13,40 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/rogeriocassares/zc2x/services/input/nats/internal/candb"
 )
 
-// SignalPublishSubjectFn maps a decoded message name to the JetStream
-// subject its signals should be published on.
-type SignalPublishSubjectFn func(messageName string) string
+// SignalPublishSubjectFn maps a decoded message name and its source NATS
+// Core subject to the JetStream subject its signals should be published on.
+type SignalPublishSubjectFn func(messageName string, sourceSubject string) string
 
 // DefaultSignalPublishSubject publishes decoded signals for message name
-// "EngineCore" to e.g. prefix+"EngineCore" (so "zc2x.js.signals." ->
-// "zc2x.js.signals.EngineCore").
-func DefaultSignalPublishSubject(prefix string) SignalPublishSubjectFn {
-	return func(messageName string) string {
-		return prefix + messageName
+// "PE1" arriving on sourceSubject "zc2x.can.obu" to e.g.
+// signalPrefix+"obu.PE1" (so "zc2x.js.signals." -> "zc2x.js.signals.obu.PE1").
+//
+// The source token here is the relay path (which NATS Core subject the
+// packet arrived on — OBU's direct WiFi link vs RSU's XBee relay), not the
+// originating device: RSU forwards packet bytes unchanged (RFC-0001
+// immutability), so a packet's DeviceID is always OBU's, even when RSU
+// relayed it. The relay path is only recoverable from sourceSubject, which
+// is why it's threaded through here rather than read back out of the
+// decoded payload. Including it as a leading subject token (rather than
+// only a JSON field) lets consumers filter by it natively — e.g.
+// "zc2x.js.signals.*.PE1" for PE1 from any path, or "zc2x.js.signals.obu.>"
+// for everything that arrived via OBU — without inspecting every payload.
+func DefaultSignalPublishSubject(signalPrefix, sourcePrefix string) SignalPublishSubjectFn {
+	return func(messageName, sourceSubject string) string {
+		source := strings.TrimPrefix(sourceSubject, sourcePrefix)
+		return signalPrefix + source + "." + messageName
 	}
 }
 
 // SignalMessage is the JSON payload published per decoded CAN message.
 type SignalMessage struct {
 	MessageName string             `json:"message"`
+	Source      string             `json:"source"`
 	CANID       uint32             `json:"can_id"`
 	DeviceID    string             `json:"device_id"`
 	Sequence    uint32             `json:"sequence"`
@@ -59,6 +73,7 @@ func (a *Adapter) decodeAndPublishSignals(ctx context.Context, pkt Packet, sourc
 
 	payload, err := json.Marshal(SignalMessage{
 		MessageName: msg.Name,
+		Source:      sourceSubject,
 		CANID:       pkt.CANID,
 		DeviceID:    fmt.Sprintf("%x", pkt.DeviceID),
 		Sequence:    pkt.Sequence,
@@ -70,7 +85,7 @@ func (a *Adapter) decodeAndPublishSignals(ctx context.Context, pkt Packet, sourc
 		return
 	}
 
-	subject := a.cfg.SignalPublishSubjectFn(msg.Name)
+	subject := a.cfg.SignalPublishSubjectFn(msg.Name, sourceSubject)
 	if _, err := a.js.Publish(ctx, subject, payload); err != nil {
 		log.Printf("internal: publish signals to jetstream %q failed: %v", subject, err)
 	}

@@ -18,6 +18,7 @@ const (
 	Int16
 	Uint16
 	Uint32
+	Int32
 )
 
 // Signal describes one named value packed into a CAN message payload.
@@ -46,44 +47,55 @@ type Message struct {
 // including IDs with no signal definition (yet).
 var ErrUnknownMessage = errors.New("candb: unknown CAN message id")
 
+// Names follow MoTeC's generic dash/logger CAN convention: CD# = Chassis
+// Dynamics, PE# = Powertrain/Engine, numbered per message rather than named
+// after their exact field mix.
 var messages = []Message{
-	{ID: 0x100, Name: "WheelSpeeds", DLC: 8, Signals: []Signal{
+	{ID: 0x100, Name: "CD1", DLC: 8, Signals: []Signal{
 		{Name: "WheelSpeedFL", ByteOffset: 0, Type: Uint16, Scale: 0.1, Unit: "km/h"},
 		{Name: "WheelSpeedFR", ByteOffset: 2, Type: Uint16, Scale: 0.1, Unit: "km/h"},
 		{Name: "WheelSpeedRL", ByteOffset: 4, Type: Uint16, Scale: 0.1, Unit: "km/h"},
 		{Name: "WheelSpeedRR", ByteOffset: 6, Type: Uint16, Scale: 0.1, Unit: "km/h"},
 	}},
-	{ID: 0x110, Name: "ChassisDynamics", DLC: 8, Signals: []Signal{
+	{ID: 0x110, Name: "CD2", DLC: 8, Signals: []Signal{
 		{Name: "SteeringAngle", ByteOffset: 0, Type: Int16, Scale: 0.1, Unit: "deg"},
 		{Name: "GForceLateral", ByteOffset: 2, Type: Int16, Scale: 0.001, Unit: "g"},
 		{Name: "GForceLongitudinal", ByteOffset: 4, Type: Int16, Scale: 0.001, Unit: "g"},
 		{Name: "GroundSpeed", ByteOffset: 6, Type: Uint16, Scale: 0.1, Unit: "km/h"},
 	}},
-	{ID: 0x120, Name: "Brakes", DLC: 4, Signals: []Signal{
+	{ID: 0x120, Name: "CD3", DLC: 4, Signals: []Signal{
 		{Name: "BrakePressureFront", ByteOffset: 0, Type: Uint16, Scale: 0.1, Unit: "bar"},
 		{Name: "BrakePressureRear", ByteOffset: 2, Type: Uint16, Scale: 0.1, Unit: "bar"},
 	}},
-	{ID: 0x200, Name: "EngineCore", DLC: 8, Signals: []Signal{
+	{ID: 0x200, Name: "PE1", DLC: 8, Signals: []Signal{
 		{Name: "EngineRPM", ByteOffset: 0, Type: Uint16, Scale: 1, Unit: "rpm"},
 		{Name: "ThrottlePosition", ByteOffset: 2, Type: Uint8, Scale: 1, Unit: "%"},
 		{Name: "Lambda1", ByteOffset: 3, Type: Uint16, Scale: 0.001, Unit: ""},
 		{Name: "ManifoldAirPressure", ByteOffset: 5, Type: Uint16, Scale: 0.1, Unit: "kPa"},
 		{Name: "Gear", ByteOffset: 7, Type: Uint8, Scale: 1, Unit: ""},
 	}},
-	{ID: 0x210, Name: "EngineTempsPressures", DLC: 8, Signals: []Signal{
+	{ID: 0x210, Name: "PE2", DLC: 8, Signals: []Signal{
 		{Name: "EngineCoolantTemperature", ByteOffset: 0, Type: Int16, Scale: 0.1, Unit: "degC"},
 		{Name: "EngineOilTemperature", ByteOffset: 2, Type: Int16, Scale: 0.1, Unit: "degC"},
-		{Name: "EngineOilPressure", ByteOffset: 4, Type: Uint16, Scale: 0.1, Unit: "bar"},
-		{Name: "FuelLinePressure", ByteOffset: 6, Type: Uint16, Scale: 0.1, Unit: "bar"},
+		{Name: "ManifoldAirTemperature", ByteOffset: 4, Type: Int16, Scale: 0.1, Unit: "degC"},
+		{Name: "EngineOilPressure", ByteOffset: 6, Type: Uint16, Scale: 0.1, Unit: "bar"},
 	}},
-	{ID: 0x211, Name: "IntakeTempFuelUsed", DLC: 6, Signals: []Signal{
-		{Name: "ManifoldAirTemperature", ByteOffset: 0, Type: Int16, Scale: 0.1, Unit: "degC"},
+	{ID: 0x211, Name: "PE3", DLC: 6, Signals: []Signal{
+		{Name: "FuelLinePressure", ByteOffset: 0, Type: Uint16, Scale: 0.1, Unit: "bar"},
 		{Name: "FuelUsedRaw", ByteOffset: 2, Type: Uint32, Scale: 1, Unit: ""},
 	}},
-	{ID: 0x220, Name: "ExhaustTemps", DLC: 6, Signals: []Signal{
+	{ID: 0x220, Name: "PE4", DLC: 6, Signals: []Signal{
 		{Name: "ExhaustCylinderTemperature1", ByteOffset: 0, Type: Int16, Scale: 1, Unit: "degC"},
 		{Name: "ExhaustCylinderTemperature2", ByteOffset: 2, Type: Int16, Scale: 1, Unit: "degC"},
 		{Name: "ExhaustCylinderTemperature3", ByteOffset: 4, Type: Int16, Scale: 1, Unit: "degC"},
+	}},
+	{ID: 0x300, Name: "GPS1", DLC: 8, Signals: []Signal{
+		{Name: "Latitude", ByteOffset: 0, Type: Int32, Scale: 0.0000001, Unit: "deg"},
+		{Name: "Longitude", ByteOffset: 4, Type: Int32, Scale: 0.0000001, Unit: "deg"},
+	}},
+	{ID: 0x310, Name: "GPS2", DLC: 4, Signals: []Signal{
+		{Name: "Altitude", ByteOffset: 0, Type: Int16, Scale: 0.1, Unit: "m"},
+		{Name: "GPSSpeed", ByteOffset: 2, Type: Uint16, Scale: 0.1, Unit: "km/h"},
 	}},
 }
 
@@ -141,6 +153,8 @@ func (s Signal) decodeRaw(data []byte) (float64, error) {
 		return float64(binary.LittleEndian.Uint16(data[s.ByteOffset:])), nil
 	case Uint32:
 		return float64(binary.LittleEndian.Uint32(data[s.ByteOffset:])), nil
+	case Int32:
+		return float64(int32(binary.LittleEndian.Uint32(data[s.ByteOffset:]))), nil
 	default:
 		return 0, fmt.Errorf("unknown value type %d", s.Type)
 	}
@@ -152,7 +166,7 @@ func (s Signal) byteLen() int {
 		return 1
 	case Int16, Uint16:
 		return 2
-	case Uint32:
+	case Uint32, Int32:
 		return 4
 	default:
 		return 0
