@@ -103,12 +103,10 @@ static void can_tx_task(void *arg) {
     /* Persistent per-message storage — see the comment on
      * s_payload_buffers/s_frames above for why this can't be stack-local. */
     uint8_t id = data_packet.id;
-    uint16_t extern_sensor_int   = (uint16_t)(data_packet.extern_sensor   * 100);
-    uint16_t middle_sensor_int   = (uint16_t)(data_packet.middle_sensor   * 100);
-    uint16_t internal_sensor_int = (uint16_t)(data_packet.internal_sensor * 100);
-    uint8_t payload[8] = {
-      0x00,
-      0x00,
+    uint16_t extern_sensor_int   = (uint16_t)(data_packet.extern_sensor   * 10);
+    uint16_t middle_sensor_int   = (uint16_t)(data_packet.middle_sensor   * 10);
+    uint16_t internal_sensor_int = (uint16_t)(data_packet.internal_sensor * 10);
+    uint8_t payload[6] = {
       (extern_sensor_int >> 8) & 0xFF,
       extern_sensor_int & 0xFF,
       (middle_sensor_int >> 8) & 0xFF,
@@ -116,9 +114,9 @@ static void can_tx_task(void *arg) {
       (internal_sensor_int >> 8) & 0xFF,
       internal_sensor_int & 0xFF
     };
-    uint16_t can_id = 0x00000000010;
+    uint32_t can_id = 304U;
     if (id != 0) {
-      can_id = 0x000000000100;
+      can_id = 336U;
     }
     twai_frame_t message_frame = (twai_frame_t){
         .header =
