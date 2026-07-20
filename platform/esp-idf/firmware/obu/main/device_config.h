@@ -51,6 +51,7 @@
  * side actually expected to carry full-rate telemetry off the track. */
 #define OBU_WIFI_CREDENTIALS                                     \
   {                                                              \
+      {"MauaRacingTeam", "Mauaracing26!", "192.168.0.100"},      \
       {"Roger_Phone", "12345678", "172.20.10.6"},                \
       {"CompreFSAELive👕👚🎥", "Formulive25*", "192.168.80.10"}, \
   }

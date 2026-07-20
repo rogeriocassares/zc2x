@@ -11,8 +11,10 @@
 //
 // signals.go additionally decodes each CAN_FRAME packet's payload into
 // named, scaled engineering-unit signals (see internal/candb for the CAN2
-// message/signal database) and republishes them as JSON to a separate
-// stream. That's purely additive — it never changes what's forwarded raw.
+// message/signal database) and republishes each one as its own JSON
+// TelemetryRecord to a separate stream, consumable directly by the apps/web
+// Next.js dashboard (or any other JSON-capable subscriber). That's purely
+// additive — it never changes what's forwarded raw.
 package internal
 
 import (
@@ -147,17 +149,21 @@ type Config struct {
 	StreamSubjects []string
 	// PublishSubjectFn maps a decoded packet to its JetStream publish subject.
 	PublishSubjectFn PublishSubjectFn
+	// SourcePrefix is trimmed from a packet's source NATS Core subject to
+	// derive the "origin" tag on published telemetry (see signals.go). Must
+	// match whatever prefix SourceSubject/PublishSubjectFn use.
+	SourcePrefix string
 
-	// SignalStreamName is the JetStream stream decoded signals (see
-	// signals.go) are published into. Separate from StreamName so its
-	// retention/lifecycle can be tuned independently — this is additive
-	// data, not a replacement for the raw stream above.
-	SignalStreamName string
-	// SignalStreamSubjects is the subject filter the signal stream captures.
-	SignalStreamSubjects []string
-	// SignalPublishSubjectFn maps a decoded message name to its JetStream
-	// publish subject.
-	SignalPublishSubjectFn SignalPublishSubjectFn
+	// TelemetryStreamName is the JetStream stream decoded per-signal Line
+	// Protocol telemetry (see signals.go) is published into. Separate from
+	// StreamName so its retention/lifecycle can be tuned independently —
+	// this is additive data, not a replacement for the raw stream above.
+	TelemetryStreamName string
+	// TelemetryStreamSubjects is the subject filter the telemetry stream captures.
+	TelemetryStreamSubjects []string
+	// TelemetryPublishSubjectFn maps a packet's source subject to its
+	// telemetry JetStream publish subject.
+	TelemetryPublishSubjectFn TelemetryPublishSubjectFn
 }
 
 // Adapter bridges NATS Core to JetStream.
@@ -183,13 +189,13 @@ func NewAdapter(cfg Config) (*Adapter, error) {
 	return &Adapter{cfg: cfg, nc: nc, js: js}, nil
 }
 
-// EnsureStream creates the raw-packet and decoded-signal JetStream streams
-// if they don't exist, or updates their subject filters if they do.
+// EnsureStream creates the raw-packet and decoded-telemetry JetStream
+// streams if they don't exist, or updates their subject filters if they do.
 func (a *Adapter) EnsureStream(ctx context.Context) error {
 	if err := a.ensureStream(ctx, a.cfg.StreamName, a.cfg.StreamSubjects); err != nil {
 		return err
 	}
-	return a.ensureStream(ctx, a.cfg.SignalStreamName, a.cfg.SignalStreamSubjects)
+	return a.ensureStream(ctx, a.cfg.TelemetryStreamName, a.cfg.TelemetryStreamSubjects)
 }
 
 func (a *Adapter) ensureStream(ctx context.Context, name string, subjects []string) error {
