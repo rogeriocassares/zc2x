@@ -62,13 +62,20 @@ typedef struct
   float wheel_fl_kmh, wheel_fr_kmh, wheel_rl_kmh, wheel_rr_kmh;
   float steering_deg, g_lat, g_long, ground_speed_kmh;
   float brake_front_bar, brake_rear_bar;
+  /* Central chassis IMU (CD4/CD5) — see the DBC's BO_ 368/369 comments for
+   * the Bosch MM7.10 reference range and why there's no magnetometer. */
+  float yaw_rate_dps, roll_rate_dps, pitch_rate_dps, g_vert;
+  float roll_angle_deg, pitch_angle_deg;
+  /* Damper position, all 4 corners (CD6) — see the DBC's BO_ 370 comment. */
+  float damper_fl_mm, damper_fr_mm, damper_rl_mm, damper_rr_mm;
   /* Tire surface temperature, 3-point IR array per corner (inner/middle/
-   * outer across the tread) — see docs/architecture/zc2x-can2.dbc's BO_ 304
-   * comment for the MLX90614 sensor and encoding this mirrors. */
-  float ttfl_inner_c, ttfl_middle_c, ttfl_outer_c;
-  float ttfr_inner_c, ttfr_middle_c, ttfr_outer_c;
-  float ttrl_inner_c, ttrl_middle_c, ttrl_outer_c;
-  float ttrr_inner_c, ttrr_middle_c, ttrr_outer_c;
+   * outer across the tread), plus tire pressure from the same physical
+   * unit — see docs/architecture/zc2x-can2.dbc's BO_ 304 comment for the
+   * MLX90614 sensor and encoding this mirrors. */
+  float ttfl_inner_c, ttfl_middle_c, ttfl_outer_c, ttfl_press_bar;
+  float ttfr_inner_c, ttfr_middle_c, ttfr_outer_c, ttfr_press_bar;
+  float ttrl_inner_c, ttrl_middle_c, ttrl_outer_c, ttrl_press_bar;
+  float ttrr_inner_c, ttrr_middle_c, ttrr_outer_c, ttrr_press_bar;
   float rpm, throttle_pct, lambda, map_kpa;
   uint8_t gear;
   float coolant_c, oil_temp_c, oil_pressure_bar, fuel_line_bar;
@@ -81,24 +88,48 @@ typedef struct
    * random walk below. Cheap on ESP32 (has FPU support for double), and
    * this runs at only 10Hz. */
   double gps_lat, gps_lon;
-  float gps_alt_m, gps_speed_kmh;
+  float gps_alt_m, gps_speed_kmh, gps_heading_deg;
 
-  /* PDM30/M130/C125/L180 custom re-aggregation — see the DBC's CM_ BU_
+  /* PDM30/M150/C125/L180 custom re-aggregation — see the DBC's CM_ BU_
    * comments for each device (docs/architecture/zc2x-can2.dbc) for why
    * these are a custom layout, not a mirror of any device's native CAN
    * broadcast. Per-output arrays (not individually-named fields) since 30
    * outputs is genuinely homogeneous, indexed data — unlike e.g. the TTU
    * corners, which are semantically distinct one-offs worth naming. */
-  float pd_battery_v, pd_total_current_a, pd_internal_temp_c;
+  float pd_battery_v, pd_total_current_a, pd_internal_temp_c, pd_internal_rail_v;
   uint8_t pd_error_flags;
   float pd_output_current_a[30];
   float pd_output_voltage_v[30];
+  float pd_output_load_pct[30];
   bool pd_output_status[30];
   bool pd_input_state[16];
   float pd_input_voltage_v[16];
 
   float ec_lambda2, ec_ignition_timing_deg, ec_battery_v, ec_baro_kpa;
   float ec_knock_pct, ec_injector_duty_pct, ec_cam_intake_deg, ec_cam_exhaust_deg;
+
+  /* EC3-EC12: real M1-series channel list — see the DBC's CM_ BU_ M150
+   * comment for where this list comes from (AiM InfoTech's MoTeC M1
+   * integration guide) and why it's kept separate from EC1/EC2's simple
+   * aggregates. */
+  float ec_gbox_c, ec_iat_c, ec_air_c, ec_amb_air_c;
+  float ec_fuel_c, ec_coolant_press_bar, ec_steer_press_bar, ec_fuel_inj_time_ms;
+  float ec_boost_target_kpa, ec_boost_kpa, ec_load_avg_pct, ec_fuel_comp_pct;
+  float ec_cam_in_b1_deg, ec_cam_in_b2_deg, ec_cam_ex_b1_deg, ec_cam_ex_b2_deg;
+  float ec_cam_in_target_deg, ec_cam_ex_target_deg;
+  float ec_cam_in_b1_duty_pct, ec_cam_in_b2_duty_pct, ec_cam_ex_b1_duty_pct, ec_cam_ex_b2_duty_pct;
+  /* Per-cylinder (up to 8) — array, not 8 named fields, same reasoning as
+   * the PDM's per-output arrays above: genuinely homogeneous, indexed
+   * data. */
+  float ec_knock_cyl_pct[8];
+  float ec_knock_trim_cyl_deg[8];
+  float ec_fuel_out_pct, ec_ign_out_pct;
+  bool ec_engine_running, ec_ign_cut_req, ec_anti_lag;
+  uint8_t ec_launch_state, ec_gear_lever;
+  float ec_fuel_level_pct;
+  uint8_t ec_ign_time_stage;
+  int32_t ec_run_time_total_s;
+  uint8_t ec_warning_flag1, ec_warning_flag2;
 
   float da_g_lat, da_g_long, da_g_vert;
   float da_temp_c, da_supply_v, da_battery_v;
@@ -112,12 +143,15 @@ static void sim_state_init(sim_state_t *s)
       .wheel_fl_kmh = 80, .wheel_fr_kmh = 80, .wheel_rl_kmh = 80, .wheel_rr_kmh = 80,
       .steering_deg = 0, .g_lat = 0, .g_long = 0, .ground_speed_kmh = 80,
       .brake_front_bar = 5, .brake_rear_bar = 4,
+      .yaw_rate_dps = 0, .roll_rate_dps = 0, .pitch_rate_dps = 0, .g_vert = 1.0f,
+      .roll_angle_deg = 0, .pitch_angle_deg = 0,
+      .damper_fl_mm = 60, .damper_fr_mm = 60, .damper_rl_mm = 60, .damper_rr_mm = 60,
       /* All three zones start equal — see encode_ttufl for why they're left
        * to diverge only via independent random walk, not a forced profile. */
-      .ttfl_inner_c = 85, .ttfl_middle_c = 85, .ttfl_outer_c = 85,
-      .ttfr_inner_c = 85, .ttfr_middle_c = 85, .ttfr_outer_c = 85,
-      .ttrl_inner_c = 85, .ttrl_middle_c = 85, .ttrl_outer_c = 85,
-      .ttrr_inner_c = 85, .ttrr_middle_c = 85, .ttrr_outer_c = 85,
+      .ttfl_inner_c = 85, .ttfl_middle_c = 85, .ttfl_outer_c = 85, .ttfl_press_bar = 1.8f,
+      .ttfr_inner_c = 85, .ttfr_middle_c = 85, .ttfr_outer_c = 85, .ttfr_press_bar = 1.8f,
+      .ttrl_inner_c = 85, .ttrl_middle_c = 85, .ttrl_outer_c = 85, .ttrl_press_bar = 1.8f,
+      .ttrr_inner_c = 85, .ttrr_middle_c = 85, .ttrr_outer_c = 85, .ttrr_press_bar = 1.8f,
       .rpm = 4500, .throttle_pct = 30, .lambda = 1.0f, .map_kpa = 100,
       .gear = 3,
       .coolant_c = 90, .oil_temp_c = 100, .oil_pressure_bar = 4, .fuel_line_bar = 4,
@@ -126,11 +160,17 @@ static void sim_state_init(sim_state_t *s)
       /* Arbitrary placeholder reference point — not any specific real
        * track — the walk below just wanders within ~1km of it. */
       .gps_lat = -23.5505, .gps_lon = -46.6333,
-      .gps_alt_m = 760, .gps_speed_kmh = 80,
+      .gps_alt_m = 760, .gps_speed_kmh = 80, .gps_heading_deg = 90,
 
-      .pd_battery_v = 13.2f, .pd_internal_temp_c = 45,
+      .pd_battery_v = 13.2f, .pd_internal_temp_c = 45, .pd_internal_rail_v = 9.5f,
       .ec_lambda2 = 1.0f, .ec_ignition_timing_deg = 20, .ec_battery_v = 13.2f, .ec_baro_kpa = 101.3f,
       .ec_injector_duty_pct = 30,
+      .ec_gbox_c = 60, .ec_iat_c = 30, .ec_air_c = 25, .ec_amb_air_c = 22,
+      .ec_fuel_c = 25, .ec_coolant_press_bar = 1.2f, .ec_steer_press_bar = 5, .ec_fuel_inj_time_ms = 5,
+      .ec_boost_target_kpa = 150, .ec_boost_kpa = 150, .ec_load_avg_pct = 60, .ec_fuel_comp_pct = 0,
+      .ec_fuel_out_pct = 100, .ec_ign_out_pct = 100,
+      .ec_engine_running = true, .ec_gear_lever = 3,
+      .ec_fuel_level_pct = 70,
       .da_g_vert = 1.0f, .da_temp_c = 35, .da_supply_v = 5.0f, .da_battery_v = 13.2f,
       .lg_g_vert = 1.0f,
   };
@@ -142,11 +182,17 @@ static void sim_state_init(sim_state_t *s)
     s->pd_output_status[i] = (i % 3) == 0;
     s->pd_output_current_a[i] = s->pd_output_status[i] ? 2.0f : 0.0f;
     s->pd_output_voltage_v[i] = s->pd_output_status[i] ? 13.0f : 0.0f;
+    s->pd_output_load_pct[i] = s->pd_output_status[i] ? 40.0f : 0.0f;
   }
   for (size_t i = 0; i < 16; i++)
   {
     s->pd_input_state[i] = (i % 3) == 0;
     s->pd_input_voltage_v[i] = s->pd_input_state[i] ? 5.0f : 0.0f;
+  }
+  for (size_t i = 0; i < 8; i++)
+  {
+    s->ec_knock_cyl_pct[i] = 0;
+    s->ec_knock_trim_cyl_deg[i] = 0;
   }
 }
 
@@ -185,6 +231,26 @@ static float random_walk_f(float value, float step, float min, float max)
   return value;
 }
 
+/* Same idea as random_walk_f, but wraps at [0,360) instead of clamping —
+ * for GPSHeading only. A compass heading is circular (0deg and 360deg are
+ * the same point); clamping like every other bounded signal in this file
+ * would make the simulated heading visibly "stick" at 0 or 359.99 instead
+ * of smoothly rotating through north. */
+static float random_walk_wrap_360(float value, float step)
+{
+  float delta = ((float)esp_random() / (float)UINT32_MAX * 2.0f - 1.0f) * step;
+  value += delta;
+  if (value < 0.0f)
+  {
+    value += 360.0f;
+  }
+  if (value >= 360.0f)
+  {
+    value -= 360.0f;
+  }
+  return value;
+}
+
 /* -------------------------------------------------------------------------
  * Per-message encoders. Each applies the random walk / state update for its
  * signals, then packs them at the byte offsets and scales defined in
@@ -205,13 +271,9 @@ static void encode_cd1(uint8_t *buf, sim_state_t *s)
 static void encode_cd2(uint8_t *buf, sim_state_t *s)
 {
   s->steering_deg = random_walk_f(s->steering_deg, 8.0f, -450, 450);
-  s->g_lat = random_walk_f(s->g_lat, 0.05f, -2.0f, 2.0f);
-  s->g_long = random_walk_f(s->g_long, 0.05f, -2.0f, 2.0f);
   s->ground_speed_kmh = random_walk_f(s->ground_speed_kmh, 2.0f, 0, 260);
   put_u16(buf, 0, (uint16_t)((s->steering_deg + 720.0f) / 0.1f));
-  put_u16(buf, 2, (uint16_t)((s->g_lat + 5.0f) / 0.001f));
-  put_u16(buf, 4, (uint16_t)((s->g_long + 5.0f) / 0.001f));
-  put_u16(buf, 6, (uint16_t)(s->ground_speed_kmh / 0.1f));
+  put_u16(buf, 2, (uint16_t)(s->ground_speed_kmh / 0.1f));
 }
 
 static void encode_cd3(uint8_t *buf, sim_state_t *s)
@@ -220,6 +282,55 @@ static void encode_cd3(uint8_t *buf, sim_state_t *s)
   s->brake_rear_bar = random_walk_f(s->brake_rear_bar, 2.5f, 0, 130);
   put_u16(buf, 0, (uint16_t)(s->brake_front_bar / 0.1f));
   put_u16(buf, 2, (uint16_t)(s->brake_rear_bar / 0.1f));
+}
+
+/* Central chassis IMU's 3-axis linear accelerometer — see the DBC's
+ * BO_ 368 comment for the Bosch MM7.10 reference range and why lateral/
+ * longitudinal moved here from CD2 (one message per physical sensor, not
+ * split across two). See CD7 for this same IMU's gyroscope output. */
+static void encode_cd4(uint8_t *buf, sim_state_t *s)
+{
+  s->g_lat = random_walk_f(s->g_lat, 0.05f, -2.0f, 2.0f);
+  s->g_long = random_walk_f(s->g_long, 0.05f, -2.0f, 2.0f);
+  s->g_vert = random_walk_f(s->g_vert, 0.02f, 0.5f, 1.5f); /* ~1g gravity baseline, road/kerb bumps */
+  put_u16(buf, 0, (uint16_t)((s->g_lat + 5.0f) / 0.001f));
+  put_u16(buf, 2, (uint16_t)((s->g_long + 5.0f) / 0.001f));
+  put_u16(buf, 4, (uint16_t)((s->g_vert + 5.0f) / 0.001f));
+}
+
+/* AHRS-derived chassis attitude from the same IMU as CD4/CD7 — see the
+ * DBC's BO_ 369 comment. */
+static void encode_cd5(uint8_t *buf, sim_state_t *s)
+{
+  s->roll_angle_deg = random_walk_f(s->roll_angle_deg, 0.3f, -45, 45);
+  s->pitch_angle_deg = random_walk_f(s->pitch_angle_deg, 0.2f, -45, 45);
+  put_u16(buf, 0, (uint16_t)((s->roll_angle_deg + 45.0f) / 0.01f));
+  put_u16(buf, 2, (uint16_t)((s->pitch_angle_deg + 45.0f) / 0.01f));
+}
+
+/* Central chassis IMU's gyroscope — see the DBC's BO_ 371 comment. */
+static void encode_cd7(uint8_t *buf, sim_state_t *s)
+{
+  s->yaw_rate_dps = random_walk_f(s->yaw_rate_dps, 3.0f, -163, 163);
+  s->roll_rate_dps = random_walk_f(s->roll_rate_dps, 2.0f, -163, 163);
+  s->pitch_rate_dps = random_walk_f(s->pitch_rate_dps, 2.0f, -163, 163);
+  put_u16(buf, 0, (uint16_t)((s->yaw_rate_dps + 163.0f) / 0.01f));
+  put_u16(buf, 2, (uint16_t)((s->roll_rate_dps + 163.0f) / 0.01f));
+  put_u16(buf, 4, (uint16_t)((s->pitch_rate_dps + 163.0f) / 0.01f));
+}
+
+/* Damper (suspension) position, all 4 corners — see the DBC's BO_ 370
+ * comment for why this is one ECU-aggregated message (contrast TTUFL etc). */
+static void encode_cd6(uint8_t *buf, sim_state_t *s)
+{
+  s->damper_fl_mm = random_walk_f(s->damper_fl_mm, 1.5f, 0, 150);
+  s->damper_fr_mm = random_walk_f(s->damper_fr_mm, 1.5f, 0, 150);
+  s->damper_rl_mm = random_walk_f(s->damper_rl_mm, 1.5f, 0, 150);
+  s->damper_rr_mm = random_walk_f(s->damper_rr_mm, 1.5f, 0, 150);
+  put_u16(buf, 0, (uint16_t)(s->damper_fl_mm / 0.01f));
+  put_u16(buf, 2, (uint16_t)(s->damper_fr_mm / 0.01f));
+  put_u16(buf, 4, (uint16_t)(s->damper_rl_mm / 0.01f));
+  put_u16(buf, 6, (uint16_t)(s->damper_rr_mm / 0.01f));
 }
 
 /* Tire surface temperature, one message per corner (see the DBC's BO_ 304
@@ -233,9 +344,11 @@ static void encode_ttufl(uint8_t *buf, sim_state_t *s)
   s->ttfl_inner_c = random_walk_f(s->ttfl_inner_c, 1.0f, 40, 140);
   s->ttfl_middle_c = random_walk_f(s->ttfl_middle_c, 1.0f, 40, 140);
   s->ttfl_outer_c = random_walk_f(s->ttfl_outer_c, 1.0f, 40, 140);
+  s->ttfl_press_bar = random_walk_f(s->ttfl_press_bar, 0.02f, 1.0f, 2.5f);
   put_u16(buf, 0, (uint16_t)((s->ttfl_inner_c + 40.0f) / 0.1f));
   put_u16(buf, 2, (uint16_t)((s->ttfl_middle_c + 40.0f) / 0.1f));
   put_u16(buf, 4, (uint16_t)((s->ttfl_outer_c + 40.0f) / 0.1f));
+  put_u16(buf, 6, (uint16_t)(s->ttfl_press_bar / 0.01f));
 }
 
 static void encode_ttufr(uint8_t *buf, sim_state_t *s)
@@ -243,9 +356,11 @@ static void encode_ttufr(uint8_t *buf, sim_state_t *s)
   s->ttfr_inner_c = random_walk_f(s->ttfr_inner_c, 1.0f, 40, 140);
   s->ttfr_middle_c = random_walk_f(s->ttfr_middle_c, 1.0f, 40, 140);
   s->ttfr_outer_c = random_walk_f(s->ttfr_outer_c, 1.0f, 40, 140);
+  s->ttfr_press_bar = random_walk_f(s->ttfr_press_bar, 0.02f, 1.0f, 2.5f);
   put_u16(buf, 0, (uint16_t)((s->ttfr_inner_c + 40.0f) / 0.1f));
   put_u16(buf, 2, (uint16_t)((s->ttfr_middle_c + 40.0f) / 0.1f));
   put_u16(buf, 4, (uint16_t)((s->ttfr_outer_c + 40.0f) / 0.1f));
+  put_u16(buf, 6, (uint16_t)(s->ttfr_press_bar / 0.01f));
 }
 
 static void encode_tturl(uint8_t *buf, sim_state_t *s)
@@ -253,9 +368,11 @@ static void encode_tturl(uint8_t *buf, sim_state_t *s)
   s->ttrl_inner_c = random_walk_f(s->ttrl_inner_c, 1.0f, 40, 140);
   s->ttrl_middle_c = random_walk_f(s->ttrl_middle_c, 1.0f, 40, 140);
   s->ttrl_outer_c = random_walk_f(s->ttrl_outer_c, 1.0f, 40, 140);
+  s->ttrl_press_bar = random_walk_f(s->ttrl_press_bar, 0.02f, 1.0f, 2.5f);
   put_u16(buf, 0, (uint16_t)((s->ttrl_inner_c + 40.0f) / 0.1f));
   put_u16(buf, 2, (uint16_t)((s->ttrl_middle_c + 40.0f) / 0.1f));
   put_u16(buf, 4, (uint16_t)((s->ttrl_outer_c + 40.0f) / 0.1f));
+  put_u16(buf, 6, (uint16_t)(s->ttrl_press_bar / 0.01f));
 }
 
 static void encode_tturr(uint8_t *buf, sim_state_t *s)
@@ -263,9 +380,11 @@ static void encode_tturr(uint8_t *buf, sim_state_t *s)
   s->ttrr_inner_c = random_walk_f(s->ttrr_inner_c, 1.0f, 40, 140);
   s->ttrr_middle_c = random_walk_f(s->ttrr_middle_c, 1.0f, 40, 140);
   s->ttrr_outer_c = random_walk_f(s->ttrr_outer_c, 1.0f, 40, 140);
+  s->ttrr_press_bar = random_walk_f(s->ttrr_press_bar, 0.02f, 1.0f, 2.5f);
   put_u16(buf, 0, (uint16_t)((s->ttrr_inner_c + 40.0f) / 0.1f));
   put_u16(buf, 2, (uint16_t)((s->ttrr_middle_c + 40.0f) / 0.1f));
   put_u16(buf, 4, (uint16_t)((s->ttrr_outer_c + 40.0f) / 0.1f));
+  put_u16(buf, 6, (uint16_t)(s->ttrr_press_bar / 0.01f));
 }
 
 static void encode_pe1(uint8_t *buf, sim_state_t *s)
@@ -356,12 +475,14 @@ static void encode_gps2(uint8_t *buf, sim_state_t *s)
 {
   s->gps_alt_m = random_walk_f(s->gps_alt_m, 0.5f, 710, 810);
   s->gps_speed_kmh = random_walk_f(s->gps_speed_kmh, 2.0f, 0, 260);
+  s->gps_heading_deg = random_walk_wrap_360(s->gps_heading_deg, 3.0f);
   put_u16(buf, 0, (uint16_t)((s->gps_alt_m + 1000.0f) / 0.1f));
   put_u16(buf, 2, (uint16_t)(s->gps_speed_kmh / 0.1f));
+  put_u16(buf, 4, (uint16_t)(s->gps_heading_deg / 0.01f));
 }
 
 /* -------------------------------------------------------------------------
- * PDM30/M130/C125/L180 custom re-aggregation — see the DBC's CM_ BU_
+ * PDM30/M150/C125/L180 custom re-aggregation — see the DBC's CM_ BU_
  * comments for each device (docs/architecture/zc2x-can2.dbc) for why these
  * are a custom layout, not a mirror of any device's native CAN broadcast.
  * ---------------------------------------------------------------------- */
@@ -369,6 +490,7 @@ static void encode_pd1(uint8_t *buf, sim_state_t *s)
 {
   s->pd_battery_v = random_walk_f(s->pd_battery_v, 0.05f, 11, 15);
   s->pd_internal_temp_c = random_walk_f(s->pd_internal_temp_c, 0.5f, 20, 80);
+  s->pd_internal_rail_v = random_walk_f(s->pd_internal_rail_v, 0.02f, 9.0f, 10.0f);
 
   float total = 0;
   for (size_t i = 0; i < 30; i++)
@@ -381,18 +503,20 @@ static void encode_pd1(uint8_t *buf, sim_state_t *s)
   put_u16(buf, 2, (uint16_t)(s->pd_total_current_a / 0.1f));
   put_u16(buf, 4, (uint16_t)((s->pd_internal_temp_c + 40.0f) / 0.1f));
   put_u8(buf, 6, s->pd_error_flags); /* always 0 in this simulator — no fault to report */
+  put_u8(buf, 7, (uint8_t)(s->pd_internal_rail_v / 0.1f));
 }
 
-/* Encodes up to 8 consecutive elements of a 0.1-unit-per-LSB, unsigned
- * 8-bit array bank, starting at `start`. Shared by PD2-PD9 (output
- * current/voltage) — the only difference between those 8 messages is
- * which 30-element array and which slice of it, so one function replaces
- * what would otherwise be 8 near-identical hand-written loops. */
-static void encode_pd_bank_u8(uint8_t *buf, const float *values, size_t start, size_t n)
+/* Encodes up to 8 consecutive elements of an unsigned 8-bit array bank,
+ * starting at `start`, at the given `scale` (unit-per-LSB). Shared by
+ * PD2-PD9 (output current/voltage, scale 0.1) and PD16-PD19 (output load,
+ * scale 1) — the only differences between those 12 messages are which
+ * 30-element array, which slice of it, and the scale, so one function
+ * replaces what would otherwise be 12 near-identical hand-written loops. */
+static void encode_pd_bank_u8(uint8_t *buf, const float *values, size_t start, size_t n, float scale)
 {
   for (size_t i = 0; i < n; i++)
   {
-    buf[i] = (uint8_t)(values[start + i] / 0.1f);
+    buf[i] = (uint8_t)(values[start + i] / scale);
   }
 }
 
@@ -421,20 +545,40 @@ static void encode_pd_voltages(sim_state_t *s)
 static void encode_pd2(uint8_t *buf, sim_state_t *s)
 {
   encode_pd_currents(s);
-  encode_pd_bank_u8(buf, s->pd_output_current_a, 0, 8);
+  encode_pd_bank_u8(buf, s->pd_output_current_a, 0, 8, 0.1f);
 }
-static void encode_pd3(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_current_a, 8, 8); }
-static void encode_pd4(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_current_a, 16, 8); }
-static void encode_pd5(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_current_a, 24, 6); }
+static void encode_pd3(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_current_a, 8, 8, 0.1f); }
+static void encode_pd4(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_current_a, 16, 8, 0.1f); }
+static void encode_pd5(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_current_a, 24, 6, 0.1f); }
 
 static void encode_pd6(uint8_t *buf, sim_state_t *s)
 {
   encode_pd_voltages(s);
-  encode_pd_bank_u8(buf, s->pd_output_voltage_v, 0, 8);
+  encode_pd_bank_u8(buf, s->pd_output_voltage_v, 0, 8, 0.1f);
 }
-static void encode_pd7(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_voltage_v, 8, 8); }
-static void encode_pd8(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_voltage_v, 16, 8); }
-static void encode_pd9(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_voltage_v, 24, 6); }
+static void encode_pd7(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_voltage_v, 8, 8, 0.1f); }
+static void encode_pd8(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_voltage_v, 16, 8, 0.1f); }
+static void encode_pd9(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_voltage_v, 24, 6, 0.1f); }
+
+/* Updates the full 30-element output-load array once per tick — called
+ * only from encode_pd16 (the first of PD16-PD19), same reasoning as
+ * encode_pd_currents/encode_pd_voltages above. */
+static void encode_pd_loads(sim_state_t *s)
+{
+  for (size_t i = 0; i < 30; i++)
+  {
+    s->pd_output_load_pct[i] = random_walk_f(s->pd_output_load_pct[i], 2.0f, 0, 100);
+  }
+}
+
+static void encode_pd16(uint8_t *buf, sim_state_t *s)
+{
+  encode_pd_loads(s);
+  encode_pd_bank_u8(buf, s->pd_output_load_pct, 0, 8, 1.0f);
+}
+static void encode_pd17(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_load_pct, 8, 8, 1.0f); }
+static void encode_pd18(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_load_pct, 16, 8, 1.0f); }
+static void encode_pd19(uint8_t *buf, sim_state_t *s) { encode_pd_bank_u8(buf, s->pd_output_load_pct, 24, 6, 1.0f); }
 
 /* Packs up to 32 booleans into a little-endian bitfield starting at byte 0
  * of buf, one bit per value. Shared by PD10 (30 output statuses) and PD11
@@ -504,7 +648,7 @@ static void encode_pd13(uint8_t *buf, sim_state_t *s) { encode_pd_input_voltage_
 static void encode_pd14(uint8_t *buf, sim_state_t *s) { encode_pd_input_voltage_bank(buf, s->pd_input_voltage_v, 8, 4); }
 static void encode_pd15(uint8_t *buf, sim_state_t *s) { encode_pd_input_voltage_bank(buf, s->pd_input_voltage_v, 12, 4); }
 
-/* M130 channels beyond CD1-3/PE1-4's baseline — see the DBC's BO_ 1088/1089
+/* M150 channels beyond CD1-3/PE1-4's baseline — see the DBC's BO_ 1088/1089
  * comments for what's included and why. */
 static void encode_ec1(uint8_t *buf, sim_state_t *s)
 {
@@ -530,8 +674,123 @@ static void encode_ec2(uint8_t *buf, sim_state_t *s)
   put_u16(buf, 4, (uint16_t)((s->ec_cam_exhaust_deg + 30.0f) / 0.1f));
 }
 
+/* EC3-EC12: real M1-series channel list — see the DBC's CM_ BU_ M150
+ * comment for where this list comes from and why it's kept separate from
+ * EC1/EC2's simple aggregates. */
+static void encode_ec3(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_gbox_c = random_walk_f(s->ec_gbox_c, 0.3f, 40, 110);
+  s->ec_iat_c = random_walk_f(s->ec_iat_c, 0.2f, 10, 60);
+  s->ec_air_c = random_walk_f(s->ec_air_c, 0.2f, 10, 50);
+  s->ec_amb_air_c = random_walk_f(s->ec_amb_air_c, 0.1f, 10, 40);
+  put_u16(buf, 0, (uint16_t)((s->ec_gbox_c + 40.0f) / 0.1f));
+  put_u16(buf, 2, (uint16_t)((s->ec_iat_c + 40.0f) / 0.1f));
+  put_u16(buf, 4, (uint16_t)((s->ec_air_c + 40.0f) / 0.1f));
+  put_u16(buf, 6, (uint16_t)((s->ec_amb_air_c + 40.0f) / 0.1f));
+}
+
+static void encode_ec4(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_fuel_c = random_walk_f(s->ec_fuel_c, 0.2f, 10, 50);
+  s->ec_coolant_press_bar = random_walk_f(s->ec_coolant_press_bar, 0.05f, 0.5f, 2.0f);
+  s->ec_steer_press_bar = random_walk_f(s->ec_steer_press_bar, 0.2f, 0, 40);
+  s->ec_fuel_inj_time_ms = random_walk_f(s->ec_fuel_inj_time_ms, 0.2f, 1, 15);
+  put_u16(buf, 0, (uint16_t)((s->ec_fuel_c + 40.0f) / 0.1f));
+  put_u16(buf, 2, (uint16_t)(s->ec_coolant_press_bar / 0.1f));
+  put_u16(buf, 4, (uint16_t)(s->ec_steer_press_bar / 0.1f));
+  put_u16(buf, 6, (uint16_t)(s->ec_fuel_inj_time_ms / 0.01f));
+}
+
+static void encode_ec5(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_boost_target_kpa = random_walk_f(s->ec_boost_target_kpa, 3.0f, 100, 250);
+  s->ec_boost_kpa = random_walk_f(s->ec_boost_kpa, 3.0f, 100, 250);
+  s->ec_load_avg_pct = random_walk_f(s->ec_load_avg_pct, 3.0f, 20, 150);
+  s->ec_fuel_comp_pct = random_walk_f(s->ec_fuel_comp_pct, 0.5f, 0, 100);
+  put_u16(buf, 0, (uint16_t)(s->ec_boost_target_kpa / 0.1f));
+  put_u16(buf, 2, (uint16_t)(s->ec_boost_kpa / 0.1f));
+  put_u16(buf, 4, (uint16_t)(s->ec_load_avg_pct / 0.1f));
+  put_u8(buf, 6, (uint8_t)s->ec_fuel_comp_pct);
+}
+
+static void encode_ec6(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_cam_in_b1_deg = random_walk_f(s->ec_cam_in_b1_deg, 0.3f, -20, 20);
+  s->ec_cam_in_b2_deg = random_walk_f(s->ec_cam_in_b2_deg, 0.3f, -20, 20);
+  s->ec_cam_ex_b1_deg = random_walk_f(s->ec_cam_ex_b1_deg, 0.3f, -20, 20);
+  s->ec_cam_ex_b2_deg = random_walk_f(s->ec_cam_ex_b2_deg, 0.3f, -20, 20);
+  put_u16(buf, 0, (uint16_t)((s->ec_cam_in_b1_deg + 30.0f) / 0.1f));
+  put_u16(buf, 2, (uint16_t)((s->ec_cam_in_b2_deg + 30.0f) / 0.1f));
+  put_u16(buf, 4, (uint16_t)((s->ec_cam_ex_b1_deg + 30.0f) / 0.1f));
+  put_u16(buf, 6, (uint16_t)((s->ec_cam_ex_b2_deg + 30.0f) / 0.1f));
+}
+
+static void encode_ec7(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_cam_in_target_deg = random_walk_f(s->ec_cam_in_target_deg, 0.3f, -20, 20);
+  s->ec_cam_ex_target_deg = random_walk_f(s->ec_cam_ex_target_deg, 0.3f, -20, 20);
+  s->ec_cam_in_b1_duty_pct = random_walk_f(s->ec_cam_in_b1_duty_pct, 2.0f, 10, 90);
+  s->ec_cam_in_b2_duty_pct = random_walk_f(s->ec_cam_in_b2_duty_pct, 2.0f, 10, 90);
+  s->ec_cam_ex_b1_duty_pct = random_walk_f(s->ec_cam_ex_b1_duty_pct, 2.0f, 10, 90);
+  s->ec_cam_ex_b2_duty_pct = random_walk_f(s->ec_cam_ex_b2_duty_pct, 2.0f, 10, 90);
+  put_u16(buf, 0, (uint16_t)((s->ec_cam_in_target_deg + 30.0f) / 0.1f));
+  put_u16(buf, 2, (uint16_t)((s->ec_cam_ex_target_deg + 30.0f) / 0.1f));
+  put_u8(buf, 4, (uint8_t)s->ec_cam_in_b1_duty_pct);
+  put_u8(buf, 5, (uint8_t)s->ec_cam_in_b2_duty_pct);
+  put_u8(buf, 6, (uint8_t)s->ec_cam_ex_b1_duty_pct);
+  put_u8(buf, 7, (uint8_t)s->ec_cam_ex_b2_duty_pct);
+}
+
+static void encode_ec8(uint8_t *buf, sim_state_t *s)
+{
+  for (size_t i = 0; i < 8; i++)
+  {
+    s->ec_knock_cyl_pct[i] = random_walk_f(s->ec_knock_cyl_pct[i], 0.5f, 0, 10); /* mostly quiet, occasional light knock */
+    buf[i] = (uint8_t)s->ec_knock_cyl_pct[i];
+  }
+}
+
+static void encode_ec9(uint8_t *buf, sim_state_t *s)
+{
+  for (size_t i = 0; i < 8; i++)
+  {
+    s->ec_knock_trim_cyl_deg[i] = random_walk_f(s->ec_knock_trim_cyl_deg[i], 0.2f, -5, 5);
+    buf[i] = (uint8_t)((s->ec_knock_trim_cyl_deg[i] + 20.0f) / 0.2f);
+  }
+}
+
+static void encode_ec10(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_fuel_out_pct = random_walk_f(s->ec_fuel_out_pct, 1.0f, 80, 100);
+  s->ec_ign_out_pct = random_walk_f(s->ec_ign_out_pct, 1.0f, 80, 100);
+  put_u8(buf, 0, (uint8_t)s->ec_fuel_out_pct);
+  put_u8(buf, 1, (uint8_t)s->ec_ign_out_pct);
+  put_u8(buf, 2, s->ec_engine_running ? 1 : 0);
+  put_u8(buf, 3, s->ec_ign_cut_req ? 1 : 0);
+  put_u8(buf, 4, s->ec_launch_state);
+  put_u8(buf, 5, s->ec_anti_lag ? 1 : 0);
+  put_u8(buf, 6, s->ec_gear_lever);
+}
+
+static void encode_ec11(uint8_t *buf, sim_state_t *s)
+{
+  s->ec_fuel_level_pct = random_walk_f(s->ec_fuel_level_pct, 0.05f, 0, 100); /* drains very slowly in this simulator */
+  s->ec_run_time_total_s += 1; /* one message period's worth of elapsed time, not wall-clock accurate — good enough for a monotonic counter */
+  put_u8(buf, 0, (uint8_t)s->ec_fuel_level_pct);
+  put_u8(buf, 1, s->ec_ign_time_stage);
+  put_i32(buf, 2, s->ec_run_time_total_s);
+}
+
+static void encode_ec12(uint8_t *buf, sim_state_t *s)
+{
+  /* Always 0 (no fault) in this simulator — see the DBC's BO_ 1099 comment
+   * for what nonzero values mean. */
+  put_u8(buf, 0, s->ec_warning_flag1);
+  put_u8(buf, 1, s->ec_warning_flag2);
+}
+
 /* C125's own internal sensors — see the DBC's BO_ 1120/1121 comments for
- * why these stay separate from CD2's/L180's G-force and PDM's/M130's
+ * why these stay separate from CD2's/L180's G-force and PDM's/M150's
  * battery-voltage signals. */
 static void encode_da1(uint8_t *buf, sim_state_t *s)
 {
@@ -582,21 +841,29 @@ typedef struct
 static const can_msg_def_t s_messages[] = {
     {ECU_CAN_ID_CD1, 8, ECU_CAN_PERIOD_CD1_MS / ECU_CAN_TICK_MS,
      encode_cd1, "CD1"},
-    {ECU_CAN_ID_CD2, 8, ECU_CAN_PERIOD_CD2_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_CD2, 4, ECU_CAN_PERIOD_CD2_MS / ECU_CAN_TICK_MS,
      encode_cd2, "CD2"},
     {ECU_CAN_ID_CD3, 4, ECU_CAN_PERIOD_CD3_MS / ECU_CAN_TICK_MS,
      encode_cd3, "CD3"},
+    {ECU_CAN_ID_CD4, 6, ECU_CAN_PERIOD_CD4_MS / ECU_CAN_TICK_MS,
+     encode_cd4, "CD4"},
+    {ECU_CAN_ID_CD5, 4, ECU_CAN_PERIOD_CD5_MS / ECU_CAN_TICK_MS,
+     encode_cd5, "CD5"},
+    {ECU_CAN_ID_CD6, 8, ECU_CAN_PERIOD_CD6_MS / ECU_CAN_TICK_MS,
+     encode_cd6, "CD6"},
+    {ECU_CAN_ID_CD7, 6, ECU_CAN_PERIOD_CD7_MS / ECU_CAN_TICK_MS,
+     encode_cd7, "CD7"},
     /* In production these 4 messages come from 4 physically separate TTU
      * nodes, not ECU (see the DBC's BU_ TTUFL/TTUFR/TTURL/TTURR comments) —
      * on the bench, one simulator stands in for the whole bus's traffic
      * regardless of which node would really transmit each message. */
-    {ECU_CAN_ID_TTUFL, 6, ECU_CAN_PERIOD_TTUFL_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_TTUFL, 8, ECU_CAN_PERIOD_TTUFL_MS / ECU_CAN_TICK_MS,
      encode_ttufl, "TTUFL"},
-    {ECU_CAN_ID_TTUFR, 6, ECU_CAN_PERIOD_TTUFR_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_TTUFR, 8, ECU_CAN_PERIOD_TTUFR_MS / ECU_CAN_TICK_MS,
      encode_ttufr, "TTUFR"},
-    {ECU_CAN_ID_TTURL, 6, ECU_CAN_PERIOD_TTURL_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_TTURL, 8, ECU_CAN_PERIOD_TTURL_MS / ECU_CAN_TICK_MS,
      encode_tturl, "TTURL"},
-    {ECU_CAN_ID_TTURR, 6, ECU_CAN_PERIOD_TTURR_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_TTURR, 8, ECU_CAN_PERIOD_TTURR_MS / ECU_CAN_TICK_MS,
      encode_tturr, "TTURR"},
     {ECU_CAN_ID_PE1, 8, ECU_CAN_PERIOD_PE1_MS / ECU_CAN_TICK_MS,
      encode_pe1, "PE1"},
@@ -608,9 +875,9 @@ static const can_msg_def_t s_messages[] = {
      encode_pe4, "PE4"},
     {ECU_CAN_ID_GPS1, 8, ECU_CAN_PERIOD_GPS1_MS / ECU_CAN_TICK_MS,
      encode_gps1, "GPS1"},
-    {ECU_CAN_ID_GPS2, 4, ECU_CAN_PERIOD_GPS2_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_GPS2, 6, ECU_CAN_PERIOD_GPS2_MS / ECU_CAN_TICK_MS,
      encode_gps2, "GPS2"},
-    {ECU_CAN_ID_PD1, 7, ECU_CAN_PERIOD_PD1_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_PD1, 8, ECU_CAN_PERIOD_PD1_MS / ECU_CAN_TICK_MS,
      encode_pd1, "PD1"},
     {ECU_CAN_ID_PD2, 8, ECU_CAN_PERIOD_PD_CURRENT_MS / ECU_CAN_TICK_MS,
      encode_pd2, "PD2"},
@@ -640,10 +907,38 @@ static const can_msg_def_t s_messages[] = {
      encode_pd14, "PD14"},
     {ECU_CAN_ID_PD15, 8, ECU_CAN_PERIOD_PD_INPUT_VOLTAGE_MS / ECU_CAN_TICK_MS,
      encode_pd15, "PD15"},
+    {ECU_CAN_ID_PD16, 8, ECU_CAN_PERIOD_PD_LOAD_MS / ECU_CAN_TICK_MS,
+     encode_pd16, "PD16"},
+    {ECU_CAN_ID_PD17, 8, ECU_CAN_PERIOD_PD_LOAD_MS / ECU_CAN_TICK_MS,
+     encode_pd17, "PD17"},
+    {ECU_CAN_ID_PD18, 8, ECU_CAN_PERIOD_PD_LOAD_MS / ECU_CAN_TICK_MS,
+     encode_pd18, "PD18"},
+    {ECU_CAN_ID_PD19, 6, ECU_CAN_PERIOD_PD_LOAD_MS / ECU_CAN_TICK_MS,
+     encode_pd19, "PD19"},
     {ECU_CAN_ID_EC1, 8, ECU_CAN_PERIOD_EC_MS / ECU_CAN_TICK_MS,
      encode_ec1, "EC1"},
     {ECU_CAN_ID_EC2, 6, ECU_CAN_PERIOD_EC_MS / ECU_CAN_TICK_MS,
      encode_ec2, "EC2"},
+    {ECU_CAN_ID_EC3, 8, ECU_CAN_PERIOD_EC3_MS / ECU_CAN_TICK_MS,
+     encode_ec3, "EC3"},
+    {ECU_CAN_ID_EC4, 8, ECU_CAN_PERIOD_EC4_MS / ECU_CAN_TICK_MS,
+     encode_ec4, "EC4"},
+    {ECU_CAN_ID_EC5, 7, ECU_CAN_PERIOD_EC5_MS / ECU_CAN_TICK_MS,
+     encode_ec5, "EC5"},
+    {ECU_CAN_ID_EC6, 8, ECU_CAN_PERIOD_EC_CAM_MS / ECU_CAN_TICK_MS,
+     encode_ec6, "EC6"},
+    {ECU_CAN_ID_EC7, 8, ECU_CAN_PERIOD_EC_CAM_MS / ECU_CAN_TICK_MS,
+     encode_ec7, "EC7"},
+    {ECU_CAN_ID_EC8, 8, ECU_CAN_PERIOD_EC_KNOCK_MS / ECU_CAN_TICK_MS,
+     encode_ec8, "EC8"},
+    {ECU_CAN_ID_EC9, 8, ECU_CAN_PERIOD_EC_KNOCK_MS / ECU_CAN_TICK_MS,
+     encode_ec9, "EC9"},
+    {ECU_CAN_ID_EC10, 7, ECU_CAN_PERIOD_EC10_MS / ECU_CAN_TICK_MS,
+     encode_ec10, "EC10"},
+    {ECU_CAN_ID_EC11, 6, ECU_CAN_PERIOD_EC11_MS / ECU_CAN_TICK_MS,
+     encode_ec11, "EC11"},
+    {ECU_CAN_ID_EC12, 2, ECU_CAN_PERIOD_EC12_MS / ECU_CAN_TICK_MS,
+     encode_ec12, "EC12"},
     {ECU_CAN_ID_DA1, 6, ECU_CAN_PERIOD_DA1_MS / ECU_CAN_TICK_MS,
      encode_da1, "DA1"},
     {ECU_CAN_ID_DA2, 6, ECU_CAN_PERIOD_DA2_MS / ECU_CAN_TICK_MS,

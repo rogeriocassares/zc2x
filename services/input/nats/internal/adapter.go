@@ -107,6 +107,29 @@ func DecodePacket(raw []byte) (Packet, error) {
 	return p, nil
 }
 
+// EncodePacket builds a wire-format zc2x_packet_t CAN_FRAME packet,
+// mirroring the encoder in framework/core/packet/src/packet.c bit-for-bit,
+// so a packet built here is indistinguishable from one produced by real
+// OBU/RSU firmware. data must be at most CANDataSize bytes; the rest of the
+// frame's DLC bytes are implicitly zero. Used by cmd/simulator, the
+// NATS-direct OBU/RSU simulator that has no hardware CAN bus to read from.
+func EncodePacket(deviceID [DeviceIDSize]byte, sequence uint32, timestampUS uint64, canID uint32, data []byte) []byte {
+	if len(data) > CANDataSize {
+		data = data[:CANDataSize]
+	}
+
+	buf := make([]byte, PacketSize)
+	buf[0] = byte(PacketTypeCANFrame)
+	copy(buf[1:7], deviceID[:])
+	binary.LittleEndian.PutUint32(buf[7:11], sequence)
+	binary.LittleEndian.PutUint64(buf[11:19], timestampUS)
+	binary.LittleEndian.PutUint32(buf[19:23], canID)
+	buf[23] = byte(len(data))
+	copy(buf[24:24+len(data)], data)
+	binary.LittleEndian.PutUint16(buf[32:34], crc16CCITTFalse(buf[:32]))
+	return buf
+}
+
 // crc16CCITTFalse mirrors framework/core/packet/src/packet_crc.c bit-for-bit:
 // poly 0x1021, init 0xFFFF, no input/output reflection, no final XOR.
 func crc16CCITTFalse(data []byte) uint16 {
@@ -164,6 +187,11 @@ type Config struct {
 	// TelemetryPublishSubjectFn maps a packet's source subject to its
 	// telemetry JetStream publish subject.
 	TelemetryPublishSubjectFn TelemetryPublishSubjectFn
+
+	// AssetRegistry optionally maps a packet's DeviceID (lowercase hex) to
+	// an asset_id (see assets.go) included on each published TelemetryRecord.
+	// Nil means no lookup — every record's AssetID stays empty.
+	AssetRegistry AssetRegistry
 }
 
 // Adapter bridges NATS Core to JetStream.

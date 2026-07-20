@@ -42,8 +42,10 @@ func TestDecodeSignals_PE1(t *testing.T) {
 func TestDecodeSignals_UnsignedWithNegativeOffset(t *testing.T) {
 	// GForceLateral = -1.234 g -> raw uint16 3766 (0x0EB6) little-endian,
 	// via this DBC's unsigned+offset encoding: physical = raw*0.001 + (-5).
-	data := []byte{0, 0, 0xB6, 0x0E, 0, 0, 0, 0}
-	got, err := DecodeSignals(0x110, data)
+	// GForceLateral lives in CD4 (0x170), the central-IMU accelerometer
+	// message -- see candb.go's CD4 comment for why it moved out of CD2.
+	data := []byte{0xB6, 0x0E, 0, 0, 0, 0}
+	got, err := DecodeSignals(0x170, data)
 	if err != nil {
 		t.Fatalf("DecodeSignals: %v", err)
 	}
@@ -84,7 +86,8 @@ func TestDecodeSignals_TTUFL(t *testing.T) {
 	// TireTempInnerFL=85.0 C (raw 1250), TireTempMiddleFL=92.5 C (raw 1325),
 	// TireTempOuterFL=78.3 C (raw 1183), unsigned uint16 @ 0.1 C/LSB,
 	// offset -40 (e.g. Inner: 1250*0.1-40=125-40=85.0).
-	data := []byte{0xE2, 0x04, 0x2D, 0x05, 0x9F, 0x04}
+	// TirePressureFL=1.85 bar (raw 185, unsigned uint16 @ 0.01 bar/LSB).
+	data := []byte{0xE2, 0x04, 0x2D, 0x05, 0x9F, 0x04, 0xB9, 0x00}
 	got, err := DecodeSignals(0x130, data)
 	if err != nil {
 		t.Fatalf("DecodeSignals: %v", err)
@@ -98,13 +101,16 @@ func TestDecodeSignals_TTUFL(t *testing.T) {
 	if !approxEqual(got["TireTempOuterFL"], 78.3) {
 		t.Errorf("TireTempOuterFL = %v, want 78.3", got["TireTempOuterFL"])
 	}
+	if !approxEqual(got["TirePressureFL"], 1.85) {
+		t.Errorf("TirePressureFL = %v, want 1.85", got["TirePressureFL"])
+	}
 }
 
 func TestDecodeSignals_PD1(t *testing.T) {
 	// PDMBatteryVoltage=13.20V (raw 1320), PDMTotalCurrent=45.5A (raw 455),
 	// PDMInternalTemp=52.3C (raw 923, offset -40: 923*0.1-40=92.3-40=52.3),
-	// PDMGlobalErrorFlags=0.
-	data := []byte{0x28, 0x05, 0xC7, 0x01, 0x9B, 0x03, 0x00}
+	// PDMGlobalErrorFlags=0, PDMInternalRailVoltage=9.5V (raw 95).
+	data := []byte{0x28, 0x05, 0xC7, 0x01, 0x9B, 0x03, 0x00, 0x5F}
 	got, err := DecodeSignals(0x400, data)
 	if err != nil {
 		t.Fatalf("DecodeSignals: %v", err)
@@ -120,6 +126,9 @@ func TestDecodeSignals_PD1(t *testing.T) {
 	}
 	if !approxEqual(got["PDMGlobalErrorFlags"], 0) {
 		t.Errorf("PDMGlobalErrorFlags = %v, want 0", got["PDMGlobalErrorFlags"])
+	}
+	if !approxEqual(got["PDMInternalRailVoltage"], 9.5) {
+		t.Errorf("PDMInternalRailVoltage = %v, want 9.5", got["PDMInternalRailVoltage"])
 	}
 }
 
@@ -214,17 +223,17 @@ func TestDecodeSignals_ShortPayload(t *testing.T) {
 
 func TestMessages_MatchesDBCCount(t *testing.T) {
 	// Cross-check against docs/architecture/zc2x-can2.dbc, independently
-	// validated with cantools: 33 messages, 183 signals. Catches drift
+	// validated with cantools: 51 messages, 279 signals. Catches drift
 	// between the DBC and this Go mirror (see candb.go's package comment:
 	// "keep both in sync by hand").
-	if len(messages) != 33 {
-		t.Errorf("len(messages) = %d, want 33", len(messages))
+	if len(messages) != 51 {
+		t.Errorf("len(messages) = %d, want 51", len(messages))
 	}
 	total := 0
 	for _, m := range messages {
 		total += len(m.Signals)
 	}
-	if total != 183 {
-		t.Errorf("total signals = %d, want 183", total)
+	if total != 279 {
+		t.Errorf("total signals = %d, want 279", total)
 	}
 }

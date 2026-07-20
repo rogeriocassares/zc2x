@@ -21,6 +21,16 @@ func main() {
 	targetPrefix := getenv("JETSTREAM_SUBJECT_PREFIX", "zc2x.js.can.")
 	telemetryPrefix := getenv("NATS_TELEMETRY_SUBJECT_PREFIX", "zc2x.js.telemetry.")
 
+	var assetRegistry internal.AssetRegistry
+	if path := os.Getenv("ASSET_REGISTRY_PATH"); path != "" {
+		reg, err := internal.LoadAssetRegistry(path)
+		if err != nil {
+			log.Fatalf("main: %v", err)
+		}
+		assetRegistry = reg
+		log.Printf("main: loaded asset registry from %s (%d entries)", path, len(reg))
+	}
+
 	cfg := internal.Config{
 		NATSURL:          getenv("NATS_URL", nats.DefaultURL),
 		SourceSubject:    getenv("NATS_SOURCE_SUBJECT", sourcePrefix+"*"),
@@ -32,6 +42,7 @@ func main() {
 		TelemetryStreamName:       getenv("JETSTREAM_TELEMETRY_STREAM", "ZC2X_TELEMETRY"),
 		TelemetryStreamSubjects:   []string{telemetryPrefix + ">"},
 		TelemetryPublishSubjectFn: internal.DefaultTelemetryPublishSubject(telemetryPrefix, sourcePrefix),
+		AssetRegistry:             assetRegistry,
 	}
 
 	adapter, err := internal.NewAdapter(cfg)

@@ -17,11 +17,13 @@
 //
 //	{"device_id":"010000000000","origin":"obu","can_message_id":784,"can_message_name":"gps_2","sensor_type":"gps_speed","value":120.3,"timestamp_ms":1737045296123}
 //
-// Fields: device_id, origin (relay path — see the comment on
-// DefaultTelemetryPublishSubject), can_message_id, can_message_name,
-// sensor_type, value (every signal's value lands in this one field
-// regardless of physical type; sensor_type is what tells them apart —
-// deliberately not one JSON field per signal name), timestamp_ms.
+// Fields: device_id, asset_id (what device_id is physically embedded in —
+// see assets.go; omitted when the registry has no entry for this device),
+// origin (relay path — see the comment on DefaultTelemetryPublishSubject),
+// can_message_id, can_message_name, sensor_type, value (every signal's value
+// lands in this one field regardless of physical type; sensor_type is what
+// tells them apart — deliberately not one JSON field per signal name),
+// timestamp_ms.
 // Snake_case keys, not idiomatic JS camelCase: kept identical to the
 // tag/field names used throughout this pipeline (candb signal names ->
 // sensor_type via toSnakeCase) rather than adding a second naming
@@ -127,6 +129,7 @@ func decimalPlaces(scale float64) int {
 // Protocol) and what each field means.
 type TelemetryRecord struct {
 	DeviceID       string  `json:"device_id"`
+	AssetID        string  `json:"asset_id,omitempty"`
 	Origin         string  `json:"origin"`
 	CANMessageID   uint32  `json:"can_message_id"`
 	CANMessageName string  `json:"can_message_name"`
@@ -165,6 +168,7 @@ func (a *Adapter) decodeAndPublishSignals(ctx context.Context, pkt Packet, sourc
 	origin := strings.TrimPrefix(sourceSubject, a.cfg.SourcePrefix)
 	messageName := toSnakeCase(msg.Name)
 	deviceID := fmt.Sprintf("%x", pkt.DeviceID)
+	assetID := a.cfg.AssetRegistry[deviceID]
 	// One timestamp per received frame: every signal decoded from it
 	// genuinely occurred at the same instant, and capturing it once avoids
 	// N redundant time.Now() calls for an N-signal message.
@@ -178,6 +182,7 @@ func (a *Adapter) decodeAndPublishSignals(ctx context.Context, pkt Packet, sourc
 		sensorType := toSnakeCase(sig.Name)
 		record := TelemetryRecord{
 			DeviceID:       deviceID,
+			AssetID:        assetID,
 			Origin:         origin,
 			CANMessageID:   msg.ID,
 			CANMessageName: messageName,
