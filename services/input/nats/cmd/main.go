@@ -19,7 +19,7 @@ import (
 func main() {
 	sourcePrefix := getenv("NATS_SOURCE_PREFIX", "zc2x.can.")
 	targetPrefix := getenv("JETSTREAM_SUBJECT_PREFIX", "zc2x.js.can.")
-	signalPrefix := getenv("NATS_SIGNAL_SUBJECT_PREFIX", "zc2x.js.signals.")
+	telemetryPrefix := getenv("NATS_TELEMETRY_SUBJECT_PREFIX", "zc2x.js.telemetry.")
 
 	cfg := internal.Config{
 		NATSURL:          getenv("NATS_URL", nats.DefaultURL),
@@ -27,10 +27,11 @@ func main() {
 		StreamName:       getenv("JETSTREAM_STREAM", "ZC2X_CAN"),
 		StreamSubjects:   []string{targetPrefix + ">"},
 		PublishSubjectFn: internal.DefaultPublishSubject(sourcePrefix, targetPrefix),
+		SourcePrefix:     sourcePrefix,
 
-		SignalStreamName:       getenv("JETSTREAM_SIGNAL_STREAM", "ZC2X_SIGNALS"),
-		SignalStreamSubjects:   []string{signalPrefix + ">"},
-		SignalPublishSubjectFn: internal.DefaultSignalPublishSubject(signalPrefix, sourcePrefix),
+		TelemetryStreamName:       getenv("JETSTREAM_TELEMETRY_STREAM", "ZC2X_TELEMETRY"),
+		TelemetryStreamSubjects:   []string{telemetryPrefix + ">"},
+		TelemetryPublishSubjectFn: internal.DefaultTelemetryPublishSubject(telemetryPrefix, sourcePrefix),
 	}
 
 	adapter, err := internal.NewAdapter(cfg)

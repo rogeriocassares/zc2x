@@ -50,6 +50,18 @@
 #define ECU_CAN_ID_CD3 0x120U /* brake line pressures */
 #define ECU_CAN_PERIOD_CD3_MS 10U /* 100 Hz */
 
+#define ECU_CAN_ID_TTUFL 0x130U /* front-left tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTUFL_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_TTUFR 0x140U /* front-right tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTUFR_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_TTURL 0x150U /* rear-left tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTURL_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_TTURR 0x160U /* rear-right tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTURR_MS 100U /* 10 Hz */
+
 #define ECU_CAN_ID_PE1 0x200U /* RPM, throttle, lambda, MAP, gear */
 #define ECU_CAN_PERIOD_PE1_MS 20U /* 50 Hz */
 
@@ -67,6 +79,47 @@
 
 #define ECU_CAN_ID_GPS2 0x310U /* altitude, GPS-derived ground speed */
 #define ECU_CAN_PERIOD_GPS2_MS 100U /* 10 Hz */
+
+/* PDM30/M130/C125/L180 custom re-aggregation — see the DBC's CM_ BU_
+ * comments for each device (docs/architecture/zc2x-can2.dbc) for why these
+ * are a custom layout, not a mirror of any device's native CAN broadcast. */
+#define ECU_CAN_ID_PD1 0x400U /* PDM: battery voltage, total current, internal temp, error flags */
+#define ECU_CAN_PERIOD_PD1_MS 50U /* 20 Hz — matches PDM's confirmed native CAN rate */
+
+#define ECU_CAN_ID_PD2 0x401U /* PDM: output currents 1-8 of 30 */
+#define ECU_CAN_ID_PD3 0x402U /* PDM: output currents 9-16 of 30 */
+#define ECU_CAN_ID_PD4 0x403U /* PDM: output currents 17-24 of 30 */
+#define ECU_CAN_ID_PD5 0x404U /* PDM: output currents 25-30 of 30 */
+#define ECU_CAN_PERIOD_PD_CURRENT_MS 50U /* 20 Hz, all 4 output-current messages */
+
+#define ECU_CAN_ID_PD6 0x405U /* PDM: output voltages 1-8 of 30 */
+#define ECU_CAN_ID_PD7 0x406U /* PDM: output voltages 9-16 of 30 */
+#define ECU_CAN_ID_PD8 0x407U /* PDM: output voltages 17-24 of 30 */
+#define ECU_CAN_ID_PD9 0x408U /* PDM: output voltages 25-30 of 30 */
+#define ECU_CAN_PERIOD_PD_VOLTAGE_MS 50U /* 20 Hz, all 4 output-voltage messages */
+
+#define ECU_CAN_ID_PD10 0x409U /* PDM: all 30 output on/off states, packed 1 bit each */
+#define ECU_CAN_ID_PD11 0x40AU /* PDM: all 16 input states, packed 1 bit each */
+#define ECU_CAN_PERIOD_PD_STATE_MS 50U /* 20 Hz, both packed-state messages */
+
+#define ECU_CAN_ID_PD12 0x40BU /* PDM: input voltages 1-4 of 16 */
+#define ECU_CAN_ID_PD13 0x40CU /* PDM: input voltages 5-8 of 16 */
+#define ECU_CAN_ID_PD14 0x40DU /* PDM: input voltages 9-12 of 16 */
+#define ECU_CAN_ID_PD15 0x40EU /* PDM: input voltages 13-16 of 16 */
+#define ECU_CAN_PERIOD_PD_INPUT_VOLTAGE_MS 50U /* 20 Hz, all 4 input-voltage messages */
+
+#define ECU_CAN_ID_EC1 0x440U /* M130: lambda2, ignition timing, ECU battery voltage, barometric pressure */
+#define ECU_CAN_ID_EC2 0x441U /* M130: knock level, injector duty cycle, cam angles */
+#define ECU_CAN_PERIOD_EC_MS 20U /* 50 Hz, matches PE1's tier */
+
+#define ECU_CAN_ID_DA1 0x460U /* C125: dash's own 3-axis G sensor */
+#define ECU_CAN_PERIOD_DA1_MS 10U /* 100 Hz, matches CD2 for direct comparability */
+
+#define ECU_CAN_ID_DA2 0x461U /* C125: dash temp, sensor supply voltage, dash battery voltage */
+#define ECU_CAN_PERIOD_DA2_MS 100U /* 10 Hz — slow-changing relative to DA1 */
+
+#define ECU_CAN_ID_LG1 0x470U /* L180: logger's own 3-axis accelerometer */
+#define ECU_CAN_PERIOD_LG1_MS 10U /* 100 Hz, matches CD2/DA1 for direct comparability */
 
 /* -----------------------------------------------------------------------
  * Tuning — queue/stack sizing. Bump these if you see TWAI tx timeouts or
