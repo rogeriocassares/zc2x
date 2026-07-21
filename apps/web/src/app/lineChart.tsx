@@ -15,6 +15,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import { CanData } from "@/lib/can"
 
 const chartConfig = {
   desktop: {
@@ -23,7 +24,7 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-export function LineCanChart({title, data, unit} : {title : string, data:[{timestamp: number, data: number}], unit?: string}) {
+export function LineCanChart({title, data, unit} : {title : string, data:CanData, unit?: string}) {
   return (
     <Card>
       <CardHeader>

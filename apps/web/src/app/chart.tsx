@@ -3,13 +3,13 @@
 import { use, useEffect, useState } from "react"
 import { LineCanChart } from "./lineChart";
 import { getNatsConnection } from "@/lib/nats";
-import { canParser } from "@/lib/can";
+import { CanMap, CanMapInit, canParser } from "@/lib/can";
 import { NatsConnection } from "@nats-io/nats-core";
 
 
 
 export function Chart(){
-  const [canMap, setCanMap] = useState<Map<string, []>>(new Map());
+  const [canMap, setCanMap] = useState<CanMap>(CanMapInit);
   useEffect(
     () => {
       let nc : NatsConnection | null;
@@ -18,7 +18,7 @@ export function Chart(){
         if(nc == null){
           return;
         }
-        nc.subscribe('zc2x.can', {
+        nc.subscribe('zc2x.can.rsu', {
           callback: (err, msg) => {
             canParser(msg.data, setCanMap);
           }
@@ -31,12 +31,8 @@ export function Chart(){
     },[]);
   return (
     <div>
-      <LineCanChart title="Temperatura pneu" data={canMap.get("Temperatura pneu")}/>
-      <LineCanChart title="RPM"/>
-      <LineCanChart title=""/>
-      <LineCanChart title=""/>
-      <LineCanChart title=""/>
-      <LineCanChart title=""/>
+      <LineCanChart title="Brake Pressure Front" data={canMap?.BrakePressureFront}/>
+      <LineCanChart title="Brake Pressure Rear" data={canMap?.BrakePressureRear}/>
     </div>
   );
 }
