@@ -61,13 +61,14 @@ func TestTelemetryRecord_JSON(t *testing.T) {
 		CANMessageName: "gps_2",
 		SensorType:     "gps_speed",
 		Value:          120.3,
+		ValueKind:      "float",
 		TimestampMS:    1737045296123,
 	}
 	got, err := json.Marshal(record)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
 	}
-	want := `{"device_id":"010000000000","origin":"obu","can_message_id":784,"can_message_name":"gps_2","sensor_type":"gps_speed","value":120.3,"timestamp_ms":1737045296123}`
+	want := `{"device_id":"010000000000","origin":"obu","can_message_id":784,"can_message_name":"gps_2","sensor_type":"gps_speed","value":120.3,"value_kind":"float","timestamp_ms":1737045296123}`
 	if string(got) != want {
 		t.Errorf("TelemetryRecord JSON =\n%s\nwant\n%s", got, want)
 	}

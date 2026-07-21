@@ -14,6 +14,76 @@ services:
       - nats_data:/data
       - ../nats/nats.conf:/etc/nats/nats.conf:ro
 
+  # InfluxDB 3 Core: stores decoded telemetry written by
+  # services/output/influxdb3 (database "zc2x", table "telemetry" -- see
+  # that service's README). --without-auth matches this project's existing
+  # local-dev convention (see ../nats/nats.conf's "No authentication in
+  # local dev — open access for simplicity"): no admin-token bootstrap
+  # needed, INFLUXDB_TOKEN in .env can stay empty. For production, drop
+  # --without-auth and provision a real token instead.
+  influxdb3-core:
+    image: influxdb:3.10.3-core
+    container_name: influxdb3-core
+    restart: unless-stopped
+    command:
+      - influxdb3
+      - serve
+      - --node-id=zc2x-node0
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3
+      - --without-auth
+    ports:
+      - "8181:8181" # HTTP API: writes (influxdb3-go client) + SQL queries (Grafana)
+    volumes:
+      - influxdb3_data:/var/lib/influxdb3
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8181/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # InfluxDB 3 Explorer: admin/query UI for the influxdb3-core instance
+  # above. Not pre-wired to a specific database/token via config.json --
+  # that file would need to embed INFLUXDB_TOKEN in a way docker-compose
+  # can't safely template into a bind-mounted static file, so connect it
+  # once by hand in the UI (server http://influxdb3-core:8181 from outside
+  # the container, or http://localhost:8181 isn't reachable from inside the
+  # explorer container -- use the service name) using the same token.
+  influxdb3-explorer:
+    image: influxdata/influxdb3-ui:1.9.0
+    container_name: influxdb3-explorer
+    restart: unless-stopped
+    depends_on:
+      influxdb3-core:
+        condition: service_healthy
+    command: ["--mode=admin"]
+    ports:
+      - "8888:8080"
+
+  # Grafana, provisioned with a datasource pointed at influxdb3-core's SQL
+  # query interface (see ../grafana/provisioning/datasources/influxdb3.yaml).
+  # GRAFANA_ADMIN_USER/PASSWORD and INFLUXDB_TOKEN come from the repo root
+  # .env via env_file below -- Grafana's provisioning YAML substitutes
+  # ${INFLUXDB_TOKEN}/${INFLUXDB_DATABASE} from its own process environment.
+  grafana:
+    image: grafana/grafana:13.0.3
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      influxdb3-core:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./../../.env
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+
 volumes:
   nats_data:
+    driver: local
+  influxdb3_data:
+    driver: local
+  grafana_data:
     driver: local

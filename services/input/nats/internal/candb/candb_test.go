@@ -223,17 +223,71 @@ func TestDecodeSignals_ShortPayload(t *testing.T) {
 
 func TestMessages_MatchesDBCCount(t *testing.T) {
 	// Cross-check against docs/architecture/zc2x-can2.dbc, independently
-	// validated with cantools: 51 messages, 279 signals. Catches drift
+	// validated with cantools: 52 messages, 284 signals. Catches drift
 	// between the DBC and this Go mirror (see candb.go's package comment:
 	// "keep both in sync by hand").
-	if len(messages) != 51 {
-		t.Errorf("len(messages) = %d, want 51", len(messages))
+	if len(messages) != 52 {
+		t.Errorf("len(messages) = %d, want 52", len(messages))
 	}
 	total := 0
 	for _, m := range messages {
 		total += len(m.Signals)
 	}
-	if total != 279 {
-		t.Errorf("total signals = %d, want 279", total)
+	if total != 284 {
+		t.Errorf("total signals = %d, want 284", total)
+	}
+}
+
+func TestSignal_ValueKind(t *testing.T) {
+	// One example per kind, plus the count breakdown across the whole
+	// database (49 bool: 46 packed-Bit PD10/PD11 signals + 3 single-byte
+	// 0/1 flags in EC10; 67 int; 168 float; 49+67+168=284) as a tripwire
+	// against a future signal accidentally misclassifying.
+	cases := []struct {
+		msgID uint32
+		sig   string
+		want  ValueKind
+	}{
+		{0x409, "OutputStatus1", KindBool},               // packed Bit, min=0 max=1
+		{0x449, "EngineRunning", KindBool},               // Uint8 but min=0 max=1
+		{0x200, "EngineRPM", KindInt},                    // scale=1, not a 0/1 flag
+		{0x220, "ExhaustCylinderTemperature1", KindInt},  // scale=1
+		{0x200, "Lambda1", KindFloat},                    // scale=0.001
+		{0x448, "IgnitionKnockTrimCylinder1", KindFloat}, // scale=0.2
+	}
+	for _, c := range cases {
+		msg, ok := MessageByID(c.msgID)
+		if !ok {
+			t.Fatalf("MessageByID(0x%03x): not found", c.msgID)
+		}
+		var found bool
+		for _, sig := range msg.Signals {
+			if sig.Name != c.sig {
+				continue
+			}
+			found = true
+			if got := sig.ValueKind(); got != c.want {
+				t.Errorf("%s.ValueKind() = %v, want %v", c.sig, got, c.want)
+			}
+		}
+		if !found {
+			t.Fatalf("signal %s not found in message 0x%03x", c.sig, c.msgID)
+		}
+	}
+
+	counts := map[ValueKind]int{}
+	for _, m := range messages {
+		for _, sig := range m.Signals {
+			counts[sig.ValueKind()]++
+		}
+	}
+	if counts[KindBool] != 49 {
+		t.Errorf("bool count = %d, want 49", counts[KindBool])
+	}
+	if counts[KindInt] != 67 {
+		t.Errorf("int count = %d, want 67", counts[KindInt])
+	}
+	if counts[KindFloat] != 168 {
+		t.Errorf("float count = %d, want 168", counts[KindFloat])
 	}
 }

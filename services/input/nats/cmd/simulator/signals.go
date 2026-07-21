@@ -30,30 +30,21 @@ func rawRange(t candb.ValueType) (min, max int64) {
 	}
 }
 
-// int32Amplitude caps the synthetic swing for Int32 signals (Latitude,
-// Longitude, FuelUsedRaw — see candb.go's Signal doc) well below their full
-// 32-bit domain. Those three signals are Bias=0, scale-only encodings whose
-// real physical range is much narrower than +/-2^31 (e.g. degrees, not the
-// ~214 degrees a full-range sine would produce for a 1e-7 deg/LSB signal);
-// this keeps generated values plausible without needing a per-signal
-// physical-range table the Go candb mirror doesn't otherwise carry.
-const int32Amplitude = 2_000_000
-
 // syntheticRaw deterministically derives a raw signal value from (seed,
-// canID, signal, elapsed-seconds-since-start): a smooth sine wave whose
-// frequency and phase are hashed from seed+canID+signal name, so different
-// devices and signals drift independently without any device needing to
-// share mutable state. This is a pipeline exerciser, not a vehicle-dynamics
-// model — it doesn't honor each signal's documented physical range (unlike
-// the physically-modeled ecu/ hardware firmware simulator), only its raw
-// wire-encoding domain, so values may occasionally look physically
-// implausible (e.g. Gear outside 1-6). Two publishers given the same seed
-// (an OBU and the RSU relaying it — see main.go) evaluate this identically
-// at the same elapsed time, approximating a live relay without piping bytes
-// between goroutines.
+// canID, signal, elapsed-seconds-since-start): a smooth sine wave, in the
+// signal's declared physical range (candb.Signal.Min/Max — this DBC's real
+// SG_-line bounds, not the wire type's full raw domain), converted to a raw
+// value via the signal's own Scale/Bias. Frequency and phase are hashed from
+// seed+canID+signal name, so different devices and signals drift
+// independently without any device needing to share mutable state. Staying
+// within Min/Max (rather than the much wider raw domain most signals only
+// partially use, e.g. Lambda1's 0.5-1.5 physical range over a full 16-bit
+// field) is what makes this a plausible reading rather than merely a value
+// that decodes without error. Two publishers given the same seed (an OBU and
+// the RSU relaying it — see main.go) evaluate this identically at the same
+// elapsed time, approximating a live relay without piping bytes between
+// goroutines.
 func syntheticRaw(seed uint64, canID uint32, sig candb.Signal, elapsedSeconds float64) int64 {
-	min, max := rawRange(sig.Type)
-
 	h := fnv.New64a()
 	h.Write([]byte{byte(canID), byte(canID >> 8), byte(canID >> 16), byte(canID >> 24)})
 	h.Write([]byte(sig.Name))
@@ -70,20 +61,30 @@ func syntheticRaw(seed uint64, canID uint32, sig candb.Signal, elapsedSeconds fl
 		return 0
 	}
 
-	amplitude := float64(max-min) * 0.35
-	if sig.Type == candb.Int32 {
-		amplitude = int32Amplitude
-	}
-	center := float64(min+max) / 2
+	amplitude := (sig.Max - sig.Min) * 0.4
+	center := (sig.Min + sig.Max) / 2
 	freq := 0.05 + 0.15*fracOf(mixed)
-	v := center + amplitude*math.Sin(2*math.Pi*freq*elapsedSeconds+phaseOf(mixed))
-	if v < float64(min) {
-		v = float64(min)
+	physical := center + amplitude*math.Sin(2*math.Pi*freq*elapsedSeconds+phaseOf(mixed))
+	if physical < sig.Min {
+		physical = sig.Min
 	}
-	if v > float64(max) {
-		v = float64(max)
+	if physical > sig.Max {
+		physical = sig.Max
 	}
-	return int64(v)
+
+	raw := (physical - sig.Bias) / sig.Scale
+	// Defensive backstop only: Min/Max are within the wire type's raw domain
+	// by construction (they're this DBC's own declared signal bounds), so
+	// this shouldn't trigger -- but encodeSignalRaw truncates blindly on
+	// whatever it's given, so clamp rather than risk silently wrapping.
+	rmin, rmax := rawRange(sig.Type)
+	if raw < float64(rmin) {
+		raw = float64(rmin)
+	}
+	if raw > float64(rmax) {
+		raw = float64(rmax)
+	}
+	return int64(math.Round(raw))
 }
 
 // fracOf/phaseOf derive a [0,1) fraction / a [0,2*pi) phase from a hash, so

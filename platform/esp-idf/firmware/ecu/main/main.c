@@ -81,7 +81,7 @@ typedef struct
   float coolant_c, oil_temp_c, oil_pressure_bar, fuel_line_bar;
   float mat_c;
   uint32_t fuel_used_raw;
-  float egt1_c, egt2_c, egt3_c;
+  float egt1_c, egt2_c, egt3_c, egt4_c, egt5_c, egt6_c, egt7_c, egt8_c;
   /* double, not float: at 1e-7 deg/LSB resolution, a magnitude-~50 degree
    * coordinate needs ~9 significant decimal digits — beyond float32's ~7
    * digits of precision, which would round-trip incorrectly through the
@@ -156,7 +156,8 @@ static void sim_state_init(sim_state_t *s)
       .gear = 3,
       .coolant_c = 90, .oil_temp_c = 100, .oil_pressure_bar = 4, .fuel_line_bar = 4,
       .mat_c = 35, .fuel_used_raw = 0,
-      .egt1_c = 750, .egt2_c = 750, .egt3_c = 750,
+      .egt1_c = 750, .egt2_c = 750, .egt3_c = 750, .egt4_c = 750,
+      .egt5_c = 750, .egt6_c = 750, .egt7_c = 750, .egt8_c = 750,
       /* Arbitrary placeholder reference point — not any specific real
        * track — the walk below just wanders within ~1km of it. */
       .gps_lat = -23.5505, .gps_lon = -46.6333,
@@ -449,14 +450,33 @@ static void encode_pe3(uint8_t *buf, sim_state_t *s)
   put_u32(buf, 2, s->fuel_used_raw);
 }
 
+/* Cylinders 1-4 of up to 8 -- see encode_pe5 for 5-8. Split across two
+ * messages because 16-bit/cylinder (matching this file's other temperature
+ * signals) caps a single classic-CAN 8-byte frame at 4 cylinders; see the
+ * DBC's BO_ 544 comment. */
 static void encode_pe4(uint8_t *buf, sim_state_t *s)
 {
   s->egt1_c = random_walk_f(s->egt1_c, 5.0f, 500, 950);
   s->egt2_c = random_walk_f(s->egt2_c, 5.0f, 500, 950);
   s->egt3_c = random_walk_f(s->egt3_c, 5.0f, 500, 950);
+  s->egt4_c = random_walk_f(s->egt4_c, 5.0f, 500, 950);
   put_u16(buf, 0, (uint16_t)s->egt1_c);
   put_u16(buf, 2, (uint16_t)s->egt2_c);
   put_u16(buf, 4, (uint16_t)s->egt3_c);
+  put_u16(buf, 6, (uint16_t)s->egt4_c);
+}
+
+/* Cylinders 5-8 of up to 8 -- see encode_pe4. */
+static void encode_pe5(uint8_t *buf, sim_state_t *s)
+{
+  s->egt5_c = random_walk_f(s->egt5_c, 5.0f, 500, 950);
+  s->egt6_c = random_walk_f(s->egt6_c, 5.0f, 500, 950);
+  s->egt7_c = random_walk_f(s->egt7_c, 5.0f, 500, 950);
+  s->egt8_c = random_walk_f(s->egt8_c, 5.0f, 500, 950);
+  put_u16(buf, 0, (uint16_t)s->egt5_c);
+  put_u16(buf, 2, (uint16_t)s->egt6_c);
+  put_u16(buf, 4, (uint16_t)s->egt7_c);
+  put_u16(buf, 6, (uint16_t)s->egt8_c);
 }
 
 /* Step ~0.00002 deg/call (~2.2m at this call rate of once per 10 ticks =
@@ -871,8 +891,10 @@ static const can_msg_def_t s_messages[] = {
      encode_pe2, "PE2"},
     {ECU_CAN_ID_PE3, 6, ECU_CAN_PERIOD_PE3_MS / ECU_CAN_TICK_MS,
      encode_pe3, "PE3"},
-    {ECU_CAN_ID_PE4, 6, ECU_CAN_PERIOD_PE4_MS / ECU_CAN_TICK_MS,
+    {ECU_CAN_ID_PE4, 8, ECU_CAN_PERIOD_PE4_MS / ECU_CAN_TICK_MS,
      encode_pe4, "PE4"},
+    {ECU_CAN_ID_PE5, 8, ECU_CAN_PERIOD_PE5_MS / ECU_CAN_TICK_MS,
+     encode_pe5, "PE5"},
     {ECU_CAN_ID_GPS1, 8, ECU_CAN_PERIOD_GPS1_MS / ECU_CAN_TICK_MS,
      encode_gps1, "GPS1"},
     {ECU_CAN_ID_GPS2, 6, ECU_CAN_PERIOD_GPS2_MS / ECU_CAN_TICK_MS,

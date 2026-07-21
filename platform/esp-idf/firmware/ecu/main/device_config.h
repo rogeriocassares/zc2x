@@ -80,8 +80,11 @@
 #define ECU_CAN_ID_PE3 0x211U /* fuel line pressure, cumulative fuel used */
 #define ECU_CAN_PERIOD_PE3_MS 100U /* 10 Hz */
 
-#define ECU_CAN_ID_PE4 0x220U /* per-cylinder exhaust gas temperature */
+#define ECU_CAN_ID_PE4 0x220U /* per-cylinder exhaust gas temperature, cylinders 1-4 */
 #define ECU_CAN_PERIOD_PE4_MS 200U /* 5 Hz */
+
+#define ECU_CAN_ID_PE5 0x221U /* per-cylinder exhaust gas temperature, cylinders 5-8 */
+#define ECU_CAN_PERIOD_PE5_MS 200U /* 5 Hz, matches PE4 */
 
 #define ECU_CAN_ID_GPS1 0x300U /* latitude, longitude */
 #define ECU_CAN_PERIOD_GPS1_MS 100U /* 10 Hz — matches a typical GPS receiver fix rate; adjust to your actual module */

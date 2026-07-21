@@ -9,13 +9,13 @@
 // The published payload is plain JSON, not InfluxDB Line Protocol: the
 // nearest-term consumer is the apps/web Next.js dashboard, which can
 // JSON.parse this directly, whereas Line Protocol isn't natively parseable
-// in the JS/TS ecosystem. A future InfluxDB3 writer service is still a
-// reasonable consumer of this same stream — encoding JSON -> Line Protocol
-// is a small, natural piece for that writer to own, cheaper overall than
-// making every non-Influx consumer parse InfluxDB's format instead. One
-// record per signal, e.g. GPS2's GPSSpeed:
+// in the JS/TS ecosystem. services/output/influxdb3 is also a consumer of
+// this same stream — encoding JSON -> InfluxDB3 points is a small, natural
+// piece for that writer to own, cheaper overall than making every
+// non-Influx consumer parse InfluxDB's format instead. One record per
+// signal, e.g. GPS2's GPSSpeed:
 //
-//	{"device_id":"010000000000","origin":"obu","can_message_id":784,"can_message_name":"gps_2","sensor_type":"gps_speed","value":120.3,"timestamp_ms":1737045296123}
+//	{"device_id":"010000000000","origin":"obu","can_message_id":784,"can_message_name":"gps_2","sensor_type":"gps_speed","value":120.3,"value_kind":"float","timestamp_ms":1737045296123}
 //
 // Fields: device_id, asset_id (what device_id is physically embedded in —
 // see assets.go; omitted when the registry has no entry for this device),
@@ -23,7 +23,7 @@
 // can_message_id, can_message_name, sensor_type, value (every signal's value
 // lands in this one field regardless of physical type; sensor_type is what
 // tells them apart — deliberately not one JSON field per signal name),
-// timestamp_ms.
+// value_kind ("float"/"int"/"bool", see TelemetryRecord's doc), timestamp_ms.
 // Snake_case keys, not idiomatic JS camelCase: kept identical to the
 // tag/field names used throughout this pipeline (candb signal names ->
 // sensor_type via toSnakeCase) rather than adding a second naming
@@ -135,7 +135,16 @@ type TelemetryRecord struct {
 	CANMessageName string  `json:"can_message_name"`
 	SensorType     string  `json:"sensor_type"`
 	Value          float64 `json:"value"`
-	TimestampMS    int64   `json:"timestamp_ms"`
+	// ValueKind is "float", "int", or "bool" (candb.Signal.ValueKind,
+	// stringified) -- additive alongside Value rather than a replacement, so
+	// existing consumers reading Value unchanged keep working. Added for
+	// services/output/influxdb3, which can't import candb itself (it's a
+	// different Go module, and candb lives under an internal/ package only
+	// importable from within services/input/nats) -- this field is how the
+	// bool/int/float classification travels downstream to become InfluxDB3's
+	// value_bool/value_int/value_float columns instead of one untyped float.
+	ValueKind   string `json:"value_kind"`
+	TimestampMS int64  `json:"timestamp_ms"`
 }
 
 // roundToDecimals rounds value to the given number of decimal digits,
@@ -188,6 +197,7 @@ func (a *Adapter) decodeAndPublishSignals(ctx context.Context, pkt Packet, sourc
 			CANMessageName: messageName,
 			SensorType:     sensorType,
 			Value:          roundToDecimals(value, decimalPlaces(sig.Scale)),
+			ValueKind:      sig.ValueKind().String(),
 			TimestampMS:    timestampMS,
 		}
 		payload, err := json.Marshal(record)

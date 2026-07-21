@@ -109,17 +109,24 @@ BO_ 529 PE3: 6 ECU
  SG_ FuelLinePressure : 0|16@1+ (0.1,0) [0|10] "bar" OBU
  SG_ FuelUsedRaw : 16|32@1- (1,0) [0|2147483647] "" OBU
 
-BO_ 544 PE4: 6 ECU
+BO_ 544 PE4: 8 ECU
  SG_ ExhaustCylinderTemperature1 : 0|16@1+ (1,0) [0|1200] "C" OBU
  SG_ ExhaustCylinderTemperature2 : 16|16@1+ (1,0) [0|1200] "C" OBU
  SG_ ExhaustCylinderTemperature3 : 32|16@1+ (1,0) [0|1200] "C" OBU
+ SG_ ExhaustCylinderTemperature4 : 48|16@1+ (1,0) [0|1200] "C" OBU
+
+BO_ 545 PE5: 8 ECU
+ SG_ ExhaustCylinderTemperature5 : 0|16@1+ (1,0) [0|1200] "C" OBU
+ SG_ ExhaustCylinderTemperature6 : 16|16@1+ (1,0) [0|1200] "C" OBU
+ SG_ ExhaustCylinderTemperature7 : 32|16@1+ (1,0) [0|1200] "C" OBU
+ SG_ ExhaustCylinderTemperature8 : 48|16@1+ (1,0) [0|1200] "C" OBU
 
 BO_ 768 GPS1: 8 ECU
  SG_ Latitude : 0|32@1- (0.0000001,0) [-90|90] "deg" OBU
  SG_ Longitude : 32|32@1- (0.0000001,0) [-180|180] "deg" OBU
 
 BO_ 784 GPS2: 6 ECU
- SG_ Altitude : 0|16@1+ (0.1,-1000) [-1000|3276.7] "m" OBU
+ SG_ Altitude : 0|16@1+ (0.1,-1000) [-1000|5553.5] "m" OBU
  SG_ GPSSpeed : 16|16@1+ (0.1,0) [0|300] "km/h" OBU
  SG_ GPSHeading : 32|16@1+ (0.01,0) [0|360] "deg" OBU
 
@@ -439,7 +446,8 @@ CM_ BO_ 352 "Rear-right tire surface temperature + pressure — see BO_ 304 (TTU
 CM_ BO_ 512 "Powertrain/Engine 1: core engine operating point — RPM, throttle, lambda, MAP, gear. 50 Hz. ManifoldAirPressure is deliberately here and NOT with ManifoldAirTemperature in PE2, despite both being 'intake' signals: MAP changes fast (boost/vacuum transients on tip-in/tip-out, knock correlation) and needs to track RPM/throttle at the same rate to be useful for tuning, while MAT is thermally slow (intake tract thermal mass) and gains nothing from fast sampling. Undersampling MAP to 10Hz to reunite it with MAT would lose real transient fidelity, which matters more here than thematic tidiness. PE1 and PE2 are also each already a full 8 bytes — classic CAN's frame limit means physically merging them isn't a free reshuffle either; it would require displacing another signal or a new dedicated message.";
 CM_ BO_ 528 "Powertrain/Engine 2: engine temperatures + oil pressure — coolant, oil temp, intake air temp, oil pressure. 10 Hz. All thermally-slow signals grouped together regardless of exact subsystem (coolant/oil/intake), matching MoTeC's own convention of one temps message per engine. See PE1's comment for why ManifoldAirPressure isn't here too.";
 CM_ BO_ 529 "Powertrain/Engine 3: fuel system only — line pressure, cumulative fuel used. 10 Hz. Deliberately separate from PE2 (was merged with engine temps/intake before — moved out for a cleaner engine-vs-fuel split). FuelUsedRaw is signed (@1-), not this file's usual unsigned-with-min-offset pattern (see CD1's comment) — MoTeC's Dash Manager doesn't support unsigned 32-bit signals. Range is [0|2147483647] (half of uint32's span) rather than the full [0|4294967295] a true unsigned counter would give; at any realistic CAN2 update rate this still takes tens of hours of continuous max-load accumulation to wrap, far beyond any real session length, so the halved range costs nothing in practice.";
-CM_ BO_ 544 "Powertrain/Engine 4: per-cylinder exhaust gas temperature (EGT). 5 Hz — thermally slower than PE2/PE3, doesn't need the same rate.";
+CM_ BO_ 544 "Powertrain/Engine 4: per-cylinder exhaust gas temperature (EGT), cylinders 1-4 of up to 8 (see PE5 for 5-8, and CM_ BU_ M150 for why 8 -- unused cylinders on smaller engines simply aren't transmitted, same convention as EC8/EC9's knock channels). 16-bit/cylinder (matches this file's other temperature signals, see BO_ 256's comment) caps a single classic-CAN 8-byte frame at 4 cylinders, hence the split into two messages rather than EC8/EC9's single 8-byte frame (which fits all 8 cylinders because knock level is only 8-bit/cylinder). 5 Hz — thermally slower than PE2/PE3, doesn't need the same rate.";
+CM_ BO_ 545 "Powertrain/Engine 5: per-cylinder exhaust gas temperature (EGT), cylinders 5-8 of up to 8 — see BO_ 544 (PE4) for the shared design rationale. 5 Hz, matching PE4.";
 CM_ BO_ 768 "GPS 1: latitude/longitude, WGS84 decimal degrees, signed 32-bit @ 1e-7 deg/LSB (~1.1cm resolution) — needs the extra precision a 16-bit signal can't give. Signed with offset 0 (not this file's usual unsigned-with-min-offset pattern, see CD1's comment) for two reasons: MoTeC's Dash Manager doesn't support unsigned 32-bit signals, and signed-at-zero is the natural fit here anyway — both signals are already zero-centered on their true physical reference (equator/prime meridian), unlike e.g. SteeringAngle or GForce where the offset trick is what makes the signal fit an unsigned encoding at all. 10 Hz assumed (typical GPS receiver fix rate); adjust ECU_CAN_PERIOD_GPS1_MS to match your actual module.";
 CM_ BO_ 784 "GPS 2: altitude (verify MSL vs WGS84-ellipsoid against your GPS module's datum config — the two can differ by tens of meters), GPS-derived ground speed, and GPS heading/course over ground. 10 Hz. GPSSpeed is intentionally a separate signal from CD2's GroundSpeed (wheel/ECU-derived): logging both lets you cross-validate against wheel slip, banking, and GPS dropout. GPSHeading is deliberately this file's only heading/orientation-about-vertical-axis source -- no magnetometer is used anywhere in this DBC (see CD4's comment): magnetic interference from the car's own ferrous structure and motors makes an in-car compass unreliable, while GPS course over ground is accurate whenever the car is moving at any real speed, which covers essentially all on-track use.";
 CM_ SG_ 512 Gear "0=Neutral, 1-6=gear, 255=unknown. See VAL_ table below.";
@@ -495,6 +503,7 @@ BA_ "GenMsgCycleTime" BO_ 512 20;
 BA_ "GenMsgCycleTime" BO_ 528 100;
 BA_ "GenMsgCycleTime" BO_ 529 100;
 BA_ "GenMsgCycleTime" BO_ 544 200;
+BA_ "GenMsgCycleTime" BO_ 545 200;
 BA_ "GenMsgCycleTime" BO_ 768 100;
 BA_ "GenMsgCycleTime" BO_ 784 100;
 BA_ "GenMsgCycleTime" BO_ 1024 50;
