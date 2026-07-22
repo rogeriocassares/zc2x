@@ -16,16 +16,23 @@
  * is defined automatically by ESP-IDF and picks the right pins here.
  * Add a new #elif branch to support another board; nothing else changes.
  * ----------------------------------------------------------------------- */
+
 #if CONFIG_IDF_TARGET_ESP32C6
 /* ESP32-C6 Mini — main target */
-#define RSU_XBEE_TX_PIN GPIO_NUM_2
-#define RSU_XBEE_RX_PIN GPIO_NUM_3
+#define OBU_CAN_TX_PIN GPIO_NUM_4
+#define OBU_CAN_RX_PIN GPIO_NUM_5
+#define OBU_XBEE_TX_PIN GPIO_NUM_2
+#define OBU_XBEE_RX_PIN GPIO_NUM_3
 #elif CONFIG_IDF_TARGET_ESP32S3
-#error "RSU pins not yet defined for esp32s3 — fill in RSU_XBEE_TX_PIN/RSU_XBEE_RX_PIN for your S3 board wiring, then remove this #error."
+#error "OBU pins not yet defined for esp32s3 — fill in OBU_CAN_TX_PIN/OBU_CAN_RX_PIN and OBU_XBEE_TX_PIN/OBU_XBEE_RX_PIN for your S3 board wiring, then remove this #error."
 #elif CONFIG_IDF_TARGET_ESP32
-#error "RSU pins not yet defined for esp32 (Wrover) — fill in RSU_XBEE_TX_PIN/RSU_XBEE_RX_PIN for your Wrover board wiring, then remove this #error."
+/* ESP32 secondary target target */
+#define OBU_CAN_TX_PIN GPIO_NUM_21
+#define OBU_CAN_RX_PIN GPIO_NUM_22
+#define OBU_XBEE_TX_PIN GPIO_NUM_16
+#define OBU_XBEE_RX_PIN GPIO_NUM_17
 #else
-#error "Unsupported IDF target for RSU — add a pin block for this chip above."
+#error "Unsupported IDF target for OBU — add a pin block for this chip above."
 #endif
 
 #define RSU_XBEE_BAUD 115200
