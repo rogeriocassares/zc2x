@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -20,6 +21,15 @@ func main() {
 	sourcePrefix := getenv("NATS_SOURCE_PREFIX", "zc2x.can.")
 	targetPrefix := getenv("JETSTREAM_SUBJECT_PREFIX", "zc2x.js.can.")
 	telemetryPrefix := getenv("NATS_TELEMETRY_SUBJECT_PREFIX", "zc2x.js.telemetry.")
+
+	// 30s comfortably covers the latency gap between OBU's direct WiFi
+	// publish and RSU's extra XBee-relay hop, without letting a rebooted
+	// device's low, reused sequence numbers collide with a stale entry --
+	// see internal/dedup.go. NATS_DEDUP_WINDOW=0 disables deduplication.
+	dedupWindow, err := time.ParseDuration(getenv("NATS_DEDUP_WINDOW", "30s"))
+	if err != nil {
+		log.Fatalf("main: invalid NATS_DEDUP_WINDOW: %v", err)
+	}
 
 	var assetRegistry internal.AssetRegistry
 	if path := os.Getenv("ASSET_REGISTRY_PATH"); path != "" {
@@ -43,6 +53,7 @@ func main() {
 		TelemetryStreamSubjects:   []string{telemetryPrefix + ">"},
 		TelemetryPublishSubjectFn: internal.DefaultTelemetryPublishSubject(telemetryPrefix, sourcePrefix),
 		AssetRegistry:             assetRegistry,
+		DedupWindow:               dedupWindow,
 	}
 
 	adapter, err := internal.NewAdapter(cfg)

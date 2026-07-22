@@ -30,7 +30,10 @@
 // candb.Messages() catalog — the same message set the ecu/ firmware
 // simulator transmits for one vehicle — so downstream decoding exercises
 // every defined CAN message, not just a subset. Override with -obu-count /
-// -rsu-count for a larger fleet.
+// -rsu-count for a larger fleet, or -stream=obu/rsu/both to control which
+// path(s) actually publish (independent of fleet size — see -stream's
+// usage text) for exercising the input service's dedup/OBU-disconnected
+// handling (see internal/dedup.go).
 package main
 
 import (
@@ -66,6 +69,7 @@ func main() {
 	natsURL := flag.String("nats-url", nats.DefaultURL, "NATS Core server URL")
 	obuCount := flag.Int("obu-count", 3, "number of simulated OBUs (vehicles)")
 	rsuCount := flag.Int("rsu-count", 3, "number of simulated RSUs (trackside poles)")
+	stream := flag.String("stream", "both", `which path(s) actually publish to NATS: "obu", "rsu", or "both". The fleet (-obu-count/-rsu-count) is always defined either way, since RSU always relays a specific vehicle's identity -- this only controls which publisher goroutines run. -stream=rsu simulates every OBU being disconnected (RSU-only delivery, exercising the input service's dedup fallback path); -stream=obu simulates no RSU coverage at all.`)
 	obuSubject := flag.String("obu-subject", "zc2x.can.obu", "subject OBU packets publish to (matches real firmware's OBU_NATS_SUBJECT)")
 	rsuSubject := flag.String("rsu-subject", "zc2x.can.rsu", "subject RSU packets publish to (matches real firmware's RSU_NATS_SUBJECT)")
 	tick := flag.Duration("tick", 20*time.Millisecond, "interval between generated CAN frames per device")
@@ -81,6 +85,11 @@ func main() {
 	}
 	if *batch < 1 {
 		log.Fatal("simulator: -batch must be >= 1")
+	}
+	streamOBU := *stream == "obu" || *stream == "both"
+	streamRSU := *stream == "rsu" || *stream == "both"
+	if !streamOBU && !streamRSU {
+		log.Fatalf(`simulator: -stream must be "obu", "rsu", or "both", got %q`, *stream)
 	}
 
 	messages := candb.Messages()
@@ -103,19 +112,24 @@ func main() {
 		log.Printf("simulator: %s device_id=%s asset_id=%s", obus[i].label, hexDeviceID(id), asset)
 	}
 
-	publishers := append([]publisher{}, obus...)
-	for j := 0; j < *rsuCount; j++ {
-		rsuID := rsuDeviceID(j + 1)
-		pole := fmt.Sprintf("pole-%d", j+1)
-		vehicle := obus[j%len(obus)]
-		publishers = append(publishers, publisher{
-			label:          fmt.Sprintf("rsu-%d(relays %s)", j+1, vehicle.label),
-			subject:        *rsuSubject,
-			packetDeviceID: vehicle.packetDeviceID, // real RSU never carries its own identity in the payload
-			seed:           vehicle.seed,           // same deterministic stream as the relayed OBU
-		})
-		log.Printf("simulator: rsu-%d device_id=%s asset_id=%s (pole; not carried in telemetry) relays %s",
-			j+1, hexDeviceID(rsuID), pole, vehicle.label)
+	var publishers []publisher
+	if streamOBU {
+		publishers = append(publishers, obus...)
+	}
+	if streamRSU {
+		for j := 0; j < *rsuCount; j++ {
+			rsuID := rsuDeviceID(j + 1)
+			pole := fmt.Sprintf("pole-%d", j+1)
+			vehicle := obus[j%len(obus)]
+			publishers = append(publishers, publisher{
+				label:          fmt.Sprintf("rsu-%d(relays %s)", j+1, vehicle.label),
+				subject:        *rsuSubject,
+				packetDeviceID: vehicle.packetDeviceID, // real RSU never carries its own identity in the payload
+				seed:           vehicle.seed,           // same deterministic stream as the relayed OBU
+			})
+			log.Printf("simulator: rsu-%d device_id=%s asset_id=%s (pole; not carried in telemetry) relays %s",
+				j+1, hexDeviceID(rsuID), pole, vehicle.label)
+		}
 	}
 
 	if *registryOut != "" {
@@ -138,8 +152,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	log.Printf("simulator: starting %d OBU + %d RSU publishers, %d CAN messages/device, tick=%s batch=%d",
-		len(obus), *rsuCount, len(messages), *tick, *batch)
+	activeOBU, activeRSU := 0, 0
+	if streamOBU {
+		activeOBU = len(obus)
+	}
+	if streamRSU {
+		activeRSU = *rsuCount
+	}
+	log.Printf("simulator: stream=%s: starting %d OBU + %d RSU publishers (fleet: %d vehicles, %d poles), %d CAN messages/device, tick=%s batch=%d",
+		*stream, activeOBU, activeRSU, *obuCount, *rsuCount, len(messages), *tick, *batch)
 
 	done := make(chan struct{}, len(publishers))
 	for _, p := range publishers {

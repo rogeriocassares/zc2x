@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/InfluxCommunity/influxdb3-go/v2/influxdb3"
@@ -10,10 +11,17 @@ import (
 // BuildPoint converts one decoded TelemetryRecord into an InfluxDB3 point on
 // table (measurement) using this project's fixed telemetry schema:
 //
-// Tags (indexed strings): sensor_type, device_id, asset_id (omitted when
-// empty -- see signals.go's AssetRegistry comment: not every device_id
-// resolves to one, and an empty-string tag is worse than an absent one for
-// "WHERE asset_id IS NOT NULL"-style queries), origin, can_message_name.
+// Tags (indexed strings -- InfluxDB3 tag values are always strings, never a
+// typed column, unlike fields below): sensor_type, device_id, asset_id
+// (omitted when empty -- see signals.go's AssetRegistry comment: not every
+// device_id resolves to one, and an empty-string tag is worse than an
+// absent one for "WHERE asset_id IS NOT NULL"-style queries), origin,
+// can_message_name, and can_message_id. can_message_id is rec.CANMessageID
+// formatted in decimal (strconv.FormatUint base 10), matching
+// docs/architecture/zc2x-can2.dbc's own BO_ <id> convention (e.g. "BO_ 512
+// PE1" -- the DBC's canonical IDs are decimal, not hex), so a value here is
+// directly greppable against the DBC source rather than needing a base
+// conversion.
 //
 // Fields: exactly one of value_float/value_int/value_bool, chosen by
 // rec.ValueKind (computed upstream by candb.Signal.ValueKind() -- see
@@ -29,6 +37,7 @@ func BuildPoint(table string, rec TelemetryRecord) (*influxdb3.Point, error) {
 		"device_id":        rec.DeviceID,
 		"origin":           rec.Origin,
 		"can_message_name": rec.CANMessageName,
+		"can_message_id":   strconv.FormatUint(uint64(rec.CANMessageID), 10),
 	}
 	if rec.AssetID != "" {
 		tags["asset_id"] = rec.AssetID

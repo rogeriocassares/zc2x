@@ -28,6 +28,7 @@ func TestBuildPoint_Float(t *testing.T) {
 	assertTag(t, p, "asset_id", "vehicle-1")
 	assertTag(t, p, "origin", "obu")
 	assertTag(t, p, "can_message_name", "gps_2")
+	assertTag(t, p, "can_message_id", "784") // decimal, matching the DBC's own "BO_ 784 GPS2" convention, not "0x310"
 
 	f := p.GetDoubleField("value_float")
 	if f == nil || *f != 120.3 {
