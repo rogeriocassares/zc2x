@@ -31,8 +31,8 @@ export function Chart(){
     },[]);
   return (
     <div>
-      <LineCanChart title="Brake Pressure Front" data={canMap?.BrakePressureFront}/>
-      <LineCanChart title="Brake Pressure Rear" data={canMap?.BrakePressureRear}/>
+      <LineCanChart title="Brake Pressure Front" data={canMap?.BrakePressureFront} unit="kPa"/>
+      <LineCanChart title="Brake Pressure Rear" data={canMap?.BrakePressureRear} unit="kPa"/>
     </div>
   );
 }

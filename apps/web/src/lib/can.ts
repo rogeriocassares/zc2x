@@ -95,51 +95,50 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
             case 256:
                 setCanList(
                     prev => {
-                        console.log(prev)
-                        prev.WheelSpeedFL.push({
+                        prev.WheelSpeedFL = [...prev.WheelSpeedFL, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 2, true))
-                        })
-                        prev.WheelSpeedFR.push({
+                        }]
+                        prev.WheelSpeedFR = [...prev.WheelSpeedFR, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 2, true))
-                        })
-                        prev.WheelSpeedRL.push({
+                        }]
+                        prev.WheelSpeedRL = [...prev.WheelSpeedRL, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 4, 2, true))
-                        })
-                        prev.WheelSpeedRR.push({
+                        }]
+                        prev.WheelSpeedRR = [...prev.WheelSpeedRR, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 6, 2, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
             case 272:
                 setCanList(
                     prev => {
-                        prev.SteeringAngle.push({
+                        prev.SteeringAngle = [...prev.SteeringAngle, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 2, true))
-                        })
-                        prev.GForceLateral.push({
+                        }]
+                        prev.GForceLateral = [...prev.GForceLateral, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 2, true))
-                        })
-                        prev.GForceLongitudional.push({
+                        }]
+                        prev.GForceLongitudional = [...prev.GForceLongitudional, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 4, 2, true))
-                        })
-                        prev.GroundSpeed.push({
+                        }]
+                        prev.GroundSpeed = [...prev.GroundSpeed, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 6, 2, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
-          case 288:
+            case 288:
                 setCanList(
                     prev => {
                         prev.BrakePressureFront = [...prev.BrakePressureFront, {
@@ -150,121 +149,121 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 2, true))
                         }]
-                        return prev;
+                        return { ...prev };
                     }
                 )
                 break;
-          case 512:
+            case 512:
                 setCanList(
                     prev => {
-                        prev.EngineRPM.push({
+                        prev.EngineRPM = [...prev.EngineRPM, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 2, true)) / 6
-                        })
-                        prev.ThrottlePosition.push({
+                        }]
+                        prev.ThrottlePosition = [...prev.ThrottlePosition, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 1, true))
-                        })
-                        prev.Lambda1.push({
+                        }]
+                        prev.Lambda1 = [...prev.Lambda1, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 3, 2, true))
-                        })
-                        prev.ManifoldAirPressure.push({
+                        }]
+                        prev.ManifoldAirPressure = [...prev.ManifoldAirPressure, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 5, 2, true))
-                        })
-                        prev.Gear.push({
+                        }]
+                        prev.Gear = [...prev.Gear, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 7, 1, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
             case 528:
                 setCanList(
                     prev => {
-                        prev.EngineCoolantTemperature.push({
+                        prev.EngineCoolantTemperature = [...prev.EngineCoolantTemperature, {
                             timestamp: Number(timestamp),
                             data: (Number(uint8ArrayToNumber(canData, 0, 2, true)) - 400) * 10
-                        })
-                        prev.EngineOilTemperature.push({
+                        }]
+                        prev.EngineOilTemperature = [...prev.EngineOilTemperature, {
                             timestamp: Number(timestamp),
                             data: (Number(uint8ArrayToNumber(canData, 2, 4, true)) - 400) * 10
-                        })
-                        prev.ManifoldAirTemperature.push({
+                        }]
+                        prev.ManifoldAirTemperature = [...prev.ManifoldAirTemperature, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 4, 6, true))
-                        })
-                        prev.EngineOilPressure.push({
+                        }]
+                        prev.EngineOilPressure = [...prev.EngineOilPressure, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 6, 2, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
             case 529:
                 setCanList(
                     prev => {
-                        prev.FuelLinePressure.push({
+                        prev.FuelLinePressure = [...prev.FuelLinePressure, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 2, true))
-                        })
-                        prev.FuelUsedRaw.push({
+                        }]
+                        prev.FuelUsedRaw = [...prev.FuelUsedRaw, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 4, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
             case 544:
                 setCanList(
                     prev => {
-                        prev.ExhaustCylinderTemperature1.push({
+                        prev.ExhaustCylinderTemperature1 = [...prev.ExhaustCylinderTemperature1, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 2, true))
-                        })
-                        prev.ExhaustCylinderTemperature2.push({
+                        }]
+                        prev.ExhaustCylinderTemperature2 = [...prev.ExhaustCylinderTemperature2, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 2, true))
-                        })
-                        prev.ExhaustCylinderTemperature3.push({
+                        }]
+                        prev.ExhaustCylinderTemperature3 = [...prev.ExhaustCylinderTemperature3, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 4, 2, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
             case 768:
                 setCanList(
                     prev => {
-                        prev.Latitude.push({
+                        prev.Latitude = [...prev.Latitude, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 4, true))
-                        })
-                        prev.Longitude.push({
+                        }]
+                        prev.Longitude = [...prev.Longitude, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 4, 4, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
             case 784:
                 setCanList(
                     prev => {
-                        prev.Altitude.push({
+                        prev.Altitude = [...prev.Altitude, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 0, 2, true))
-                        })
-                        prev.GPSSpeed.push({
+                        }]
+                        prev.GPSSpeed = [...prev.GPSSpeed, {
                             timestamp: Number(timestamp),
                             data: Number(uint8ArrayToNumber(canData, 2, 4, true))
-                        })
-                        return prev;
+                        }]
+                        return { ...prev };
                     }
                 )
                 break;
@@ -275,8 +274,10 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
 
 function uint8ArrayToNumber(byteArray: Uint8Array, offset: number, size: number, bigEndian: boolean): bigint {
     let result = BigInt(0);
-    for (let i = size - 1; i <= 0; i++) {
-        result = (result << BigInt(8 * i)) | BigInt(byteArray[offset + i]);
+    for (let i = 0; i < size; i++) {
+        result = result | BigInt(byteArray[offset + i]);
+        if (i == size - 1) break;
+        result = result << BigInt(8);
     }
     return result;
 }
