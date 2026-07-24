@@ -30,9 +30,20 @@ export function Chart(){
       }
     },[]);
   return (
-    <div>
-      <LineCanChart title="Brake Pressure Front" data={canMap?.BrakePressureFront} unit="kPa"/>
-      <LineCanChart title="Brake Pressure Rear" data={canMap?.BrakePressureRear} unit="kPa"/>
+    <div className="w-[100%]">
+      <div className="flex">
+        <LineCanChart title="Brake Pressure Front" data={canMap?.BrakePressureFront} unit="kPa"/>
+        <LineCanChart title="Brake Pressure Rear" data={canMap?.BrakePressureRear} unit="kPa"/>
+      </div>
+      <div className="flex">
+        <LineCanChart title="Engine Oil Pressure" data={canMap?.EngineOilPressure}    unit="kPa"/>
+        <LineCanChart title="Engine Oil Temperature" data={canMap?.EngineOilTemperature} unit="°C"/>
+      </div>
+      <div className="flex">
+        <LineCanChart title="Altitude" data={canMap?.Altitude} unit="m"/>
+        <LineCanChart title="Latitude" data={canMap?.Latitude} unit="m"/>
+        <LineCanChart title="Longitude" data={canMap?.Longitude} unit="m"/>
+      </div>
     </div>
   );
 }

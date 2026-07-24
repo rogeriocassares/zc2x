@@ -26,7 +26,7 @@ const chartConfig = {
 
 export function LineCanChart({title, data, unit} : {title : string, data:CanData, unit?: string}) {
   return (
-    <Card>
+    <Card className="w-[50%]">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         <CardDescription>{unit}</CardDescription>

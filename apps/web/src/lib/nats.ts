@@ -7,7 +7,7 @@ export async function getNatsConnection(): Promise<NatsConnection> {
   if (!natsClient || natsClient.isClosed()) {
     try{
     natsClient = await wsconnect({
-      servers: process.env.NATS_URL || "ws://localhost:4223",
+      servers: process.env.NEXT_PUBLIC_NATS_URL || "ws://localhost:4223",
     });
     } catch(e){
       console.log(e);
