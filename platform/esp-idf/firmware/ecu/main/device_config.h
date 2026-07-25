@@ -50,6 +50,27 @@
 #define ECU_CAN_ID_CD3 0x120U /* brake line pressures */
 #define ECU_CAN_PERIOD_CD3_MS 10U /* 100 Hz */
 
+#define ECU_CAN_ID_CD4 0x170U /* central chassis IMU: 3-axis linear G (lateral/longitudinal/vertical) */
+#define ECU_CAN_ID_CD5 0x171U /* central chassis IMU: roll/pitch angle (AHRS) */
+#define ECU_CAN_ID_CD6 0x172U /* damper position, all 4 corners */
+#define ECU_CAN_ID_CD7 0x173U /* central chassis IMU: yaw/roll/pitch rate (gyroscope) */
+#define ECU_CAN_PERIOD_CD4_MS 10U /* 100 Hz, matches CD1-3 */
+#define ECU_CAN_PERIOD_CD5_MS 10U /* 100 Hz, matches CD4 */
+#define ECU_CAN_PERIOD_CD6_MS 10U /* 100 Hz, matches CD1-4 */
+#define ECU_CAN_PERIOD_CD7_MS 10U /* 100 Hz, matches CD1-4/CD6 */
+
+#define ECU_CAN_ID_TTUFL 0x130U /* front-left tire surface temp: inner/middle/outer, + pressure */
+#define ECU_CAN_PERIOD_TTUFL_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_TTUFR 0x140U /* front-right tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTUFR_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_TTURL 0x150U /* rear-left tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTURL_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_TTURR 0x160U /* rear-right tire surface temp: inner/middle/outer */
+#define ECU_CAN_PERIOD_TTURR_MS 100U /* 10 Hz */
+
 #define ECU_CAN_ID_PE1 0x200U /* RPM, throttle, lambda, MAP, gear */
 #define ECU_CAN_PERIOD_PE1_MS 20U /* 50 Hz */
 
@@ -59,14 +80,93 @@
 #define ECU_CAN_ID_PE3 0x211U /* fuel line pressure, cumulative fuel used */
 #define ECU_CAN_PERIOD_PE3_MS 100U /* 10 Hz */
 
-#define ECU_CAN_ID_PE4 0x220U /* per-cylinder exhaust gas temperature */
+#define ECU_CAN_ID_PE4 0x220U /* per-cylinder exhaust gas temperature, cylinders 1-4 */
 #define ECU_CAN_PERIOD_PE4_MS 200U /* 5 Hz */
+
+#define ECU_CAN_ID_PE5 0x221U /* per-cylinder exhaust gas temperature, cylinders 5-8 */
+#define ECU_CAN_PERIOD_PE5_MS 200U /* 5 Hz, matches PE4 */
 
 #define ECU_CAN_ID_GPS1 0x300U /* latitude, longitude */
 #define ECU_CAN_PERIOD_GPS1_MS 100U /* 10 Hz — matches a typical GPS receiver fix rate; adjust to your actual module */
 
 #define ECU_CAN_ID_GPS2 0x310U /* altitude, GPS-derived ground speed */
 #define ECU_CAN_PERIOD_GPS2_MS 100U /* 10 Hz */
+
+/* PDM30/M150/C125/L180 custom re-aggregation — see the DBC's CM_ BU_
+ * comments for each device (docs/architecture/zc2x-can2.dbc) for why these
+ * are a custom layout, not a mirror of any device's native CAN broadcast. */
+#define ECU_CAN_ID_PD1 0x400U /* PDM: battery voltage, total current, internal temp, error flags */
+#define ECU_CAN_PERIOD_PD1_MS 50U /* 20 Hz — matches PDM's confirmed native CAN rate */
+
+#define ECU_CAN_ID_PD2 0x401U /* PDM: output currents 1-8 of 30 */
+#define ECU_CAN_ID_PD3 0x402U /* PDM: output currents 9-16 of 30 */
+#define ECU_CAN_ID_PD4 0x403U /* PDM: output currents 17-24 of 30 */
+#define ECU_CAN_ID_PD5 0x404U /* PDM: output currents 25-30 of 30 */
+#define ECU_CAN_PERIOD_PD_CURRENT_MS 50U /* 20 Hz, all 4 output-current messages */
+
+#define ECU_CAN_ID_PD6 0x405U /* PDM: output voltages 1-8 of 30 */
+#define ECU_CAN_ID_PD7 0x406U /* PDM: output voltages 9-16 of 30 */
+#define ECU_CAN_ID_PD8 0x407U /* PDM: output voltages 17-24 of 30 */
+#define ECU_CAN_ID_PD9 0x408U /* PDM: output voltages 25-30 of 30 */
+#define ECU_CAN_PERIOD_PD_VOLTAGE_MS 50U /* 20 Hz, all 4 output-voltage messages */
+
+#define ECU_CAN_ID_PD10 0x409U /* PDM: all 30 output on/off states, packed 1 bit each */
+#define ECU_CAN_ID_PD11 0x40AU /* PDM: all 16 input states, packed 1 bit each */
+#define ECU_CAN_PERIOD_PD_STATE_MS 50U /* 20 Hz, both packed-state messages */
+
+#define ECU_CAN_ID_PD12 0x40BU /* PDM: input voltages 1-4 of 16 */
+#define ECU_CAN_ID_PD13 0x40CU /* PDM: input voltages 5-8 of 16 */
+#define ECU_CAN_ID_PD14 0x40DU /* PDM: input voltages 9-12 of 16 */
+#define ECU_CAN_ID_PD15 0x40EU /* PDM: input voltages 13-16 of 16 */
+#define ECU_CAN_PERIOD_PD_INPUT_VOLTAGE_MS 50U /* 20 Hz, all 4 input-voltage messages */
+
+#define ECU_CAN_ID_PD16 0x40FU /* PDM: output loads 1-8 of 30 */
+#define ECU_CAN_ID_PD17 0x410U /* PDM: output loads 9-16 of 30 */
+#define ECU_CAN_ID_PD18 0x411U /* PDM: output loads 17-24 of 30 */
+#define ECU_CAN_ID_PD19 0x412U /* PDM: output loads 25-30 of 30 */
+#define ECU_CAN_PERIOD_PD_LOAD_MS 50U /* 20 Hz, all 4 output-load messages */
+
+#define ECU_CAN_ID_EC1 0x440U /* M150: lambda2, ignition timing, ECU battery voltage, barometric pressure */
+#define ECU_CAN_ID_EC2 0x441U /* M150: knock level, injector duty cycle, cam angles */
+#define ECU_CAN_PERIOD_EC_MS 20U /* 50 Hz, matches PE1's tier */
+
+/* EC3-EC12: real M1-series channel list beyond CD1-3/PE1-4/EC1/EC2 —
+ * see the DBC's CM_ BU_ M150 comment (confirmed via AiM InfoTech's MoTeC
+ * M1 integration guide, which lists M150 as a supported model). */
+#define ECU_CAN_ID_EC3 0x442U /* M150: gearbox/intake/air/ambient temperatures */
+#define ECU_CAN_PERIOD_EC3_MS 100U /* 10 Hz, matches PE2's tier */
+
+#define ECU_CAN_ID_EC4 0x443U /* M150: fuel temp, coolant/steering pressure, fuel injection time */
+#define ECU_CAN_PERIOD_EC4_MS 100U /* 10 Hz */
+
+#define ECU_CAN_ID_EC5 0x444U /* M150: boost target/actual, engine load average, fuel composition */
+#define ECU_CAN_PERIOD_EC5_MS 20U /* 50 Hz, matches PE1's tier — boost is fast-changing */
+
+#define ECU_CAN_ID_EC6 0x445U /* M150: per-bank intake/exhaust cam position */
+#define ECU_CAN_ID_EC7 0x446U /* M150: cam position targets + per-bank duty cycle */
+#define ECU_CAN_PERIOD_EC_CAM_MS 20U /* 50 Hz, both cam messages */
+
+#define ECU_CAN_ID_EC8 0x447U /* M150: per-cylinder knock level (up to 8 cylinders) */
+#define ECU_CAN_ID_EC9 0x448U /* M150: per-cylinder ignition knock trim (up to 8 cylinders) */
+#define ECU_CAN_PERIOD_EC_KNOCK_MS 20U /* 50 Hz, both per-cylinder knock messages */
+
+#define ECU_CAN_ID_EC10 0x449U /* M150: output driver levels, run/cut/launch/anti-lag state, gear lever */
+#define ECU_CAN_PERIOD_EC10_MS 50U /* 20 Hz — mostly discrete/state signals */
+
+#define ECU_CAN_ID_EC11 0x44AU /* M150: fuel level, ignition time stage, total engine run time */
+#define ECU_CAN_PERIOD_EC11_MS 100U /* 10 Hz — all slow-changing */
+
+#define ECU_CAN_ID_EC12 0x44BU /* M150: warning flag bytes (see the DBC's BO_ 1099 comment for values) */
+#define ECU_CAN_PERIOD_EC12_MS 50U /* 20 Hz */
+
+#define ECU_CAN_ID_DA1 0x460U /* C125: dash's own 3-axis G sensor */
+#define ECU_CAN_PERIOD_DA1_MS 10U /* 100 Hz, matches CD2 for direct comparability */
+
+#define ECU_CAN_ID_DA2 0x461U /* C125: dash temp, sensor supply voltage, dash battery voltage */
+#define ECU_CAN_PERIOD_DA2_MS 100U /* 10 Hz — slow-changing relative to DA1 */
+
+#define ECU_CAN_ID_LG1 0x470U /* L180: logger's own 3-axis accelerometer */
+#define ECU_CAN_PERIOD_LG1_MS 10U /* 100 Hz, matches CD2/DA1 for direct comparability */
 
 /* -----------------------------------------------------------------------
  * Tuning — queue/stack sizing. Bump these if you see TWAI tx timeouts or

@@ -17,14 +17,16 @@
 /* ESP32-C6 Mini — main target */
 #define OBU_CAN_TX_PIN GPIO_NUM_4
 #define OBU_CAN_RX_PIN GPIO_NUM_5
-// #define OBU_XBEE_TX_PIN GPIO_NUM_17 // XBee DIn (alternate pin mapping)
-// #define OBU_XBEE_RX_PIN GPIO_NUM_16 // XBee DOut (alternate pin mapping)
 #define OBU_XBEE_TX_PIN GPIO_NUM_2
 #define OBU_XBEE_RX_PIN GPIO_NUM_3
 #elif CONFIG_IDF_TARGET_ESP32S3
 #error "OBU pins not yet defined for esp32s3 — fill in OBU_CAN_TX_PIN/OBU_CAN_RX_PIN and OBU_XBEE_TX_PIN/OBU_XBEE_RX_PIN for your S3 board wiring, then remove this #error."
 #elif CONFIG_IDF_TARGET_ESP32
-#error "OBU pins not yet defined for esp32 (Wrover) — fill in OBU_CAN_TX_PIN/OBU_CAN_RX_PIN and OBU_XBEE_TX_PIN/OBU_XBEE_RX_PIN for your Wrover board wiring, then remove this #error."
+/* ESP32 secondary target target */
+#define OBU_CAN_TX_PIN GPIO_NUM_21
+#define OBU_CAN_RX_PIN GPIO_NUM_22
+#define OBU_XBEE_TX_PIN GPIO_NUM_16
+#define OBU_XBEE_RX_PIN GPIO_NUM_17
 #else
 #error "Unsupported IDF target for OBU — add a pin block for this chip above."
 #endif
@@ -51,6 +53,7 @@
  * side actually expected to carry full-rate telemetry off the track. */
 #define OBU_WIFI_CREDENTIALS                                     \
   {                                                              \
+      {"MauaRacingTeam", "Mauaracing26!", "192.168.0.100"},      \
       {"Roger_Phone", "12345678", "172.20.10.6"},                \
       {"CompreFSAELive👕👚🎥", "Formulive25*", "192.168.80.10"}, \
   }

@@ -11,8 +11,10 @@
 //
 // signals.go additionally decodes each CAN_FRAME packet's payload into
 // named, scaled engineering-unit signals (see internal/candb for the CAN2
-// message/signal database) and republishes them as JSON to a separate
-// stream. That's purely additive — it never changes what's forwarded raw.
+// message/signal database) and republishes each one as its own JSON
+// TelemetryRecord to a separate stream, consumable directly by the apps/web
+// Next.js dashboard (or any other JSON-capable subscriber). That's purely
+// additive — it never changes what's forwarded raw.
 package internal
 
 import (
@@ -21,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -105,6 +108,29 @@ func DecodePacket(raw []byte) (Packet, error) {
 	return p, nil
 }
 
+// EncodePacket builds a wire-format zc2x_packet_t CAN_FRAME packet,
+// mirroring the encoder in framework/core/packet/src/packet.c bit-for-bit,
+// so a packet built here is indistinguishable from one produced by real
+// OBU/RSU firmware. data must be at most CANDataSize bytes; the rest of the
+// frame's DLC bytes are implicitly zero. Used by cmd/simulator, the
+// NATS-direct OBU/RSU simulator that has no hardware CAN bus to read from.
+func EncodePacket(deviceID [DeviceIDSize]byte, sequence uint32, timestampUS uint64, canID uint32, data []byte) []byte {
+	if len(data) > CANDataSize {
+		data = data[:CANDataSize]
+	}
+
+	buf := make([]byte, PacketSize)
+	buf[0] = byte(PacketTypeCANFrame)
+	copy(buf[1:7], deviceID[:])
+	binary.LittleEndian.PutUint32(buf[7:11], sequence)
+	binary.LittleEndian.PutUint64(buf[11:19], timestampUS)
+	binary.LittleEndian.PutUint32(buf[19:23], canID)
+	buf[23] = byte(len(data))
+	copy(buf[24:24+len(data)], data)
+	binary.LittleEndian.PutUint16(buf[32:34], crc16CCITTFalse(buf[:32]))
+	return buf
+}
+
 // crc16CCITTFalse mirrors framework/core/packet/src/packet_crc.c bit-for-bit:
 // poly 0x1021, init 0xFFFF, no input/output reflection, no final XOR.
 func crc16CCITTFalse(data []byte) uint16 {
@@ -147,24 +173,42 @@ type Config struct {
 	StreamSubjects []string
 	// PublishSubjectFn maps a decoded packet to its JetStream publish subject.
 	PublishSubjectFn PublishSubjectFn
+	// SourcePrefix is trimmed from a packet's source NATS Core subject to
+	// derive the "origin" tag on published telemetry (see signals.go). Must
+	// match whatever prefix SourceSubject/PublishSubjectFn use.
+	SourcePrefix string
 
-	// SignalStreamName is the JetStream stream decoded signals (see
-	// signals.go) are published into. Separate from StreamName so its
-	// retention/lifecycle can be tuned independently — this is additive
-	// data, not a replacement for the raw stream above.
-	SignalStreamName string
-	// SignalStreamSubjects is the subject filter the signal stream captures.
-	SignalStreamSubjects []string
-	// SignalPublishSubjectFn maps a decoded message name to its JetStream
-	// publish subject.
-	SignalPublishSubjectFn SignalPublishSubjectFn
+	// TelemetryStreamName is the JetStream stream decoded per-signal JSON
+	// telemetry (see signals.go) is published into. Separate from
+	// StreamName so its retention/lifecycle can be tuned independently —
+	// this is additive data, not a replacement for the raw stream above.
+	TelemetryStreamName string
+	// TelemetryStreamSubjects is the subject filter the telemetry stream captures.
+	TelemetryStreamSubjects []string
+	// TelemetryPublishSubjectFn maps a packet's source subject to its
+	// telemetry JetStream publish subject.
+	TelemetryPublishSubjectFn TelemetryPublishSubjectFn
+
+	// AssetRegistry optionally maps a packet's DeviceID (lowercase hex) to
+	// an asset_id (see assets.go) included on each published TelemetryRecord.
+	// Nil means no lookup — every record's AssetID stays empty.
+	AssetRegistry AssetRegistry
+
+	// DedupWindow bounds how long a packet's (device_id, sequence) is
+	// remembered for duplicate suppression (see dedup.go) — OBU publishes
+	// directly over WiFi *and* forwards every frame to RSU over XBee, which
+	// relays it unmodified, so the same packet legitimately reaches NATS
+	// Core twice whenever both paths are up. Zero disables deduplication
+	// entirely (every packet processed as-is, e.g. useful for tests).
+	DedupWindow time.Duration
 }
 
 // Adapter bridges NATS Core to JetStream.
 type Adapter struct {
-	cfg Config
-	nc  *nats.Conn
-	js  jetstream.JetStream
+	cfg   Config
+	nc    *nats.Conn
+	js    jetstream.JetStream
+	dedup *Deduplicator // nil if cfg.DedupWindow == 0
 }
 
 // NewAdapter connects to NATS Core and initializes the JetStream context.
@@ -180,16 +224,20 @@ func NewAdapter(cfg Config) (*Adapter, error) {
 		return nil, fmt.Errorf("adapter: init jetstream: %w", err)
 	}
 
-	return &Adapter{cfg: cfg, nc: nc, js: js}, nil
+	a := &Adapter{cfg: cfg, nc: nc, js: js}
+	if cfg.DedupWindow > 0 {
+		a.dedup = NewDeduplicator(cfg.DedupWindow)
+	}
+	return a, nil
 }
 
-// EnsureStream creates the raw-packet and decoded-signal JetStream streams
-// if they don't exist, or updates their subject filters if they do.
+// EnsureStream creates the raw-packet and decoded-telemetry JetStream
+// streams if they don't exist, or updates their subject filters if they do.
 func (a *Adapter) EnsureStream(ctx context.Context) error {
 	if err := a.ensureStream(ctx, a.cfg.StreamName, a.cfg.StreamSubjects); err != nil {
 		return err
 	}
-	return a.ensureStream(ctx, a.cfg.SignalStreamName, a.cfg.SignalStreamSubjects)
+	return a.ensureStream(ctx, a.cfg.TelemetryStreamName, a.cfg.TelemetryStreamSubjects)
 }
 
 func (a *Adapter) ensureStream(ctx context.Context, name string, subjects []string) error {
@@ -217,12 +265,24 @@ func (a *Adapter) Run(ctx context.Context) error {
 	log.Printf("adapter: listening on %q, forwarding valid packets to stream %q",
 		a.cfg.SourceSubject, a.cfg.StreamName)
 
+	// Sweep at half the dedup window: an entry can be up to window+sweep-
+	// interval old before eviction, so this keeps that slop small relative
+	// to window itself without sweeping on every single packet.
+	var sweep <-chan time.Time
+	if a.dedup != nil {
+		ticker := time.NewTicker(a.cfg.DedupWindow / 2)
+		defer ticker.Stop()
+		sweep = ticker.C
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case msg := <-msgs:
 			a.handleMessage(ctx, msg)
+		case <-sweep:
+			a.dedup.Sweep()
 		}
 	}
 }
@@ -250,6 +310,15 @@ func (a *Adapter) handleMessage(ctx context.Context, msg *nats.Msg) {
 		pkt, err := DecodePacket(raw)
 		if err != nil {
 			log.Printf("adapter: dropping packet at offset %d on %q: %v", offset, msg.Subject, err)
+			continue
+		}
+
+		// Dedup before republishing at all: OBU publishes directly *and*
+		// forwards to RSU, which relays unmodified, so the same packet can
+		// legitimately reach us twice. A duplicate must be dropped here, not
+		// just in decodeAndPublishSignals below -- otherwise the raw stream
+		// still gets it twice even though telemetry doesn't.
+		if a.dedup != nil && !a.dedup.Accept(pkt.DeviceID, pkt.Sequence) {
 			continue
 		}
 

@@ -14,6 +14,115 @@ services:
       - nats_data:/data
       - ../nats/nats.conf:/etc/nats/nats.conf:ro
 
+  # InfluxDB 3 Core: stores decoded telemetry written by
+  # services/output/influxdb3 (database "zc2x", table "telemetry" -- see
+  # that service's README). Auth is enabled -- INFLUXDB_TOKEN in .env is a
+  # real admin token, bootstrapped once with
+  #   docker compose exec influxdb3-core influxdb3 create token --admin
+  # --disable-authz=health exempts only the healthcheck endpoint below from
+  # that requirement (writes/queries still need the real token) -- otherwise
+  # docker-compose's own healthcheck can't authenticate: it runs inside this
+  # container via plain curl, and the compose file's ${INFLUXDB_TOKEN}
+  # substitution doesn't reach the repo-root .env (compose only auto-loads
+  # an .env next to this file, not two directories up).
+  influxdb3-core:
+    image: influxdb:3.10.3-core
+    container_name: influxdb3-core
+    restart: unless-stopped
+    command:
+      - influxdb3
+      - serve
+      - --node-id=zc2x-node0
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3
+      # - --disable-authz=health
+    ports:
+      - "8181:8181" # HTTP API: writes (influxdb3-go client) + SQL queries (Grafana)
+    volumes:
+      - influxdb3_data:/var/lib/influxdb3
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8181/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # InfluxDB 3 Explorer: admin/query UI for the influxdb3-core instance
+  # above. Pre-wired to zc2x/telemetry via ../influxdb3-explorer/config.json
+  # (Explorer only supports this as a static file, not env vars -- checked
+  # against its docs). That file contains the real INFLUXDB_TOKEN in plain
+  # text, matching this project's existing local-dev convention of
+  # committing dev secrets in tracked files (see the repo root .env) rather
+  # than a separate untracked-secrets mechanism this project doesn't have
+  # yet. Rotate the token (and this file) before this ever leaves local dev.
+  #
+  # SESSION_SECRET_KEY (from .env) must stay stable across restarts:
+  # Explorer's SQLite session store (the "db" volume below) persists
+  # data encrypted with it, and a changed key makes that data
+  # undecryptable on the next start ("bad decrypt" — see .env's comment).
+  influxdb3-explorer:
+    image: influxdata/influxdb3-ui:1.9.0
+    container_name: influxdb3-explorer
+    restart: unless-stopped
+    depends_on:
+      influxdb3-core:
+        condition: service_healthy
+    command: ["--mode=admin"]
+    env_file:
+      - ./../../.env
+    ports:
+      - "8888:8080"
+    volumes:
+      - ../influxdb3-explorer:/app-root/config:ro
+      - influxdb3_explorer_db:/db
+
+  # Grafana, provisioned with a datasource pointed at influxdb3-core's SQL
+  # query interface (see ../grafana/provisioning/datasources/influxdb3.yaml).
+  # GRAFANA_ADMIN_USER/PASSWORD and INFLUXDB_TOKEN come from the repo root
+  # .env via env_file below -- Grafana's provisioning YAML substitutes
+  # ${INFLUXDB_TOKEN}/${INFLUXDB_DATABASE} from its own process environment.
+  grafana:
+    image: grafana/grafana:13.0.3
+    container_name: grafana
+    restart: unless-stopped
+    depends_on:
+      influxdb3-core:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./../../.env
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+
+  # JetStream (ZC2X_TELEMETRY) -> InfluxDB3 writer -- see
+  # ../../services/output/influxdb3. Runs continuously so telemetry
+  # actually lands in InfluxDB3 instead of only during a manual test run.
+  # NATS_URL/INFLUXDB_HOST are overridden here to the in-network service
+  # names; everything else (INFLUXDB_TOKEN/DATABASE/TABLE) comes from the
+  # repo root .env via env_file, same as grafana above.
+  influxdb3-output:
+    build:
+      context: ../../services/output/influxdb3
+    container_name: influxdb3-output
+    restart: unless-stopped
+    depends_on:
+      influxdb3-core:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    environment:
+      - NATS_URL=nats://nats:4222
+      - INFLUXDB_HOST=http://influxdb3-core:8181
+    env_file:
+      - ./../../.env
+
 volumes:
   nats_data:
+    driver: local
+  influxdb3_data:
+    driver: local
+  grafana_data:
+    driver: local
+  influxdb3_explorer_db:
     driver: local

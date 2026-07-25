@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -19,7 +20,26 @@ import (
 func main() {
 	sourcePrefix := getenv("NATS_SOURCE_PREFIX", "zc2x.can.")
 	targetPrefix := getenv("JETSTREAM_SUBJECT_PREFIX", "zc2x.js.can.")
-	signalPrefix := getenv("NATS_SIGNAL_SUBJECT_PREFIX", "zc2x.js.signals.")
+	telemetryPrefix := getenv("NATS_TELEMETRY_SUBJECT_PREFIX", "zc2x.js.telemetry.")
+
+	// 30s comfortably covers the latency gap between OBU's direct WiFi
+	// publish and RSU's extra XBee-relay hop, without letting a rebooted
+	// device's low, reused sequence numbers collide with a stale entry --
+	// see internal/dedup.go. NATS_DEDUP_WINDOW=0 disables deduplication.
+	dedupWindow, err := time.ParseDuration(getenv("NATS_DEDUP_WINDOW", "30s"))
+	if err != nil {
+		log.Fatalf("main: invalid NATS_DEDUP_WINDOW: %v", err)
+	}
+
+	var assetRegistry internal.AssetRegistry
+	if path := os.Getenv("ASSET_REGISTRY_PATH"); path != "" {
+		reg, err := internal.LoadAssetRegistry(path)
+		if err != nil {
+			log.Fatalf("main: %v", err)
+		}
+		assetRegistry = reg
+		log.Printf("main: loaded asset registry from %s (%d entries)", path, len(reg))
+	}
 
 	cfg := internal.Config{
 		NATSURL:          getenv("NATS_URL", nats.DefaultURL),
@@ -27,10 +47,13 @@ func main() {
 		StreamName:       getenv("JETSTREAM_STREAM", "ZC2X_CAN"),
 		StreamSubjects:   []string{targetPrefix + ">"},
 		PublishSubjectFn: internal.DefaultPublishSubject(sourcePrefix, targetPrefix),
+		SourcePrefix:     sourcePrefix,
 
-		SignalStreamName:       getenv("JETSTREAM_SIGNAL_STREAM", "ZC2X_SIGNALS"),
-		SignalStreamSubjects:   []string{signalPrefix + ">"},
-		SignalPublishSubjectFn: internal.DefaultSignalPublishSubject(signalPrefix, sourcePrefix),
+		TelemetryStreamName:       getenv("JETSTREAM_TELEMETRY_STREAM", "ZC2X_TELEMETRY"),
+		TelemetryStreamSubjects:   []string{telemetryPrefix + ">"},
+		TelemetryPublishSubjectFn: internal.DefaultTelemetryPublishSubject(telemetryPrefix, sourcePrefix),
+		AssetRegistry:             assetRegistry,
+		DedupWindow:               dedupWindow,
 	}
 
 	adapter, err := internal.NewAdapter(cfg)
