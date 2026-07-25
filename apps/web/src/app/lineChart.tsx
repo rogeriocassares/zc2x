@@ -1,5 +1,5 @@
 "use client"
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts"
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 
 import {
   Card,
@@ -35,21 +35,23 @@ export function LineCanChart({title, data, unit} : {title : string, data:CanData
         <ChartContainer config={chartConfig}>
           <LineChart
             accessibilityLayer
-            data={data}
+            data={data.sort((a,b)=>{return a.timestamp - b.timestamp}).slice(-100)}
             margin={{
               left: 12,
               right: 12,
             }}
           >
-            <CartesianGrid vertical={false} />
+            <CartesianGrid />
             <XAxis
               dataKey="timestamp"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
+              
             />
+            <YAxis/>
             <ChartTooltip
-              cursor={false}
+              cursor={true}
               content={<ChartTooltipContent hideLabel />}
             />
             <Line
@@ -58,6 +60,7 @@ export function LineCanChart({title, data, unit} : {title : string, data:CanData
               stroke="var(--color-desktop)"
               strokeWidth={2}
               dot={false}
+              
             />
           </LineChart>
         </ChartContainer>

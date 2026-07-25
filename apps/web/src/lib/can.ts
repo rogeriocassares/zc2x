@@ -2,7 +2,7 @@
 
 import { Dispatch, SetStateAction } from "react";
 
-export type CanData = Array<{ timestamp: Number, data: Number }>
+export type CanData = Array<{ timestamp: number, data: number }>
 
 export type CanMap = {
     WheelSpeedFL: CanData;
@@ -83,14 +83,14 @@ export let CanMapInit: CanMap = {
 }
 
 const NATS_PACKET_SIZE = 34;
-
+let timestamp =0;
 export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateAction<CanMap>>) {
-    const messageView = new DataView(message.buffer);
+  const messageView = new DataView(message.buffer);
     for (let i = 0; i < message.length / NATS_PACKET_SIZE; i++) {
         const timestamp = messageView.getBigInt64(12 + NATS_PACKET_SIZE * i);
         const canIdArray = message.subarray(19 + NATS_PACKET_SIZE * i, 23 + NATS_PACKET_SIZE * i).toReversed();
         const canId = canIdArray[2] << 8 | canIdArray[3];
-        const canData = message.subarray(24 + NATS_PACKET_SIZE * i, 32 + NATS_PACKET_SIZE * i);
+      const canData = message.subarray(24 + NATS_PACKET_SIZE * i, 32 + NATS_PACKET_SIZE * i);
         switch (Number(canId)) {
             case 256:
                 setCanList(
@@ -189,11 +189,11 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                         }]
                         prev.EngineOilTemperature = [...prev.EngineOilTemperature, {
                             timestamp: Number(timestamp),
-                            data: (Number(uint8ArrayToNumber(canData, 2, 4, true)) - 400) * 10
+                            data: (Number(uint8ArrayToNumber(canData, 2, 2, true)) - 400) * 10
                         }]
                         prev.ManifoldAirTemperature = [...prev.ManifoldAirTemperature, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 4, 6, true))
+                            data: Number(uint8ArrayToNumber(canData, 4, 2, true))
                         }]
                         prev.EngineOilPressure = [...prev.EngineOilPressure, {
                             timestamp: Number(timestamp),

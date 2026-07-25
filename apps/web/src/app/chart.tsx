@@ -44,6 +44,12 @@ export function Chart(){
         <LineCanChart title="Latitude" data={canMap?.Latitude} unit="m"/>
         <LineCanChart title="Longitude" data={canMap?.Longitude} unit="m"/>
       </div>
+      <div className="flex">
+        <LineCanChart title="Wheel Speed FL" data={canMap?.WheelSpeedFL} unit="km/h"/>
+        <LineCanChart title="Wheel Speed FR" data={canMap?.WheelSpeedFR} unit="km/h"/>
+        <LineCanChart title="Wheel Speed RL" data={canMap?.WheelSpeedRL} unit="km/h"/>
+        <LineCanChart title="Wheel Speed RR" data={canMap?.WheelSpeedRR} unit="km/h"/>
+      </div>
     </div>
   );
 }
