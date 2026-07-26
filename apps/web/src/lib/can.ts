@@ -13,7 +13,7 @@ export type CanMap = {
     SteeringAngle: CanData;
     GForceLateral: CanData;
     GForceLongitudional: CanData;
-    GroundSpeed: CanData;
+    GForceVert: CanData;
 
     BrakePressureFront: CanData;
     BrakePressureRear: CanData;
@@ -40,7 +40,15 @@ export type CanMap = {
     Longitude: CanData;
 
     Altitude: CanData;
-    GPSSpeed: CanData;
+  GPSSpeed: CanData;
+  
+  PDMBatteryVoltage: CanData;
+  PDMTotalCurrent: CanData;
+  PDMInternalTemp: CanData;
+  PDMGlobalErrorFlags: CanData;
+  PDMInternalRailVoltage: CanData;
+
+  
 }
 
 export let CanMapInit: CanMap = {
@@ -52,7 +60,7 @@ export let CanMapInit: CanMap = {
     SteeringAngle: [],
     GForceLateral: [],
     GForceLongitudional: [],
-    GroundSpeed: [],
+    GForceVert: [],
 
     BrakePressureFront: [],
     BrakePressureRear: [],
@@ -79,7 +87,13 @@ export let CanMapInit: CanMap = {
     Longitude: [],
 
     Altitude: [],
-    GPSSpeed: [],
+  GPSSpeed: [],
+
+  PDMBatteryVoltage: [],
+  PDMTotalCurrent: [],
+  PDMInternalTemp: [],
+  PDMGlobalErrorFlags: [],
+  PDMInternalRailVoltage: [],
 }
 
 const NATS_PACKET_SIZE = 34;
@@ -87,8 +101,8 @@ let timestamp =0;
 export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateAction<CanMap>>) {
   const messageView = new DataView(message.buffer);
     for (let i = 0; i < message.length / NATS_PACKET_SIZE; i++) {
-        const timestamp = messageView.getBigInt64(12 + NATS_PACKET_SIZE * i);
-        const canIdArray = message.subarray(19 + NATS_PACKET_SIZE * i, 23 + NATS_PACKET_SIZE * i).toReversed();
+      timestamp++;
+      const canIdArray = message.subarray(19 + NATS_PACKET_SIZE * i, 23 + NATS_PACKET_SIZE * i).toReversed();
         const canId = canIdArray[2] << 8 | canIdArray[3];
       const canData = message.subarray(24 + NATS_PACKET_SIZE * i, 32 + NATS_PACKET_SIZE * i);
         switch (Number(canId)) {
@@ -97,19 +111,19 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                     prev => {
                         prev.WheelSpeedFL = [...prev.WheelSpeedFL, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 0, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 0, 2, true))
                         }]
                         prev.WheelSpeedFR = [...prev.WheelSpeedFR, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 2, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 2, 2, true)) 
                         }]
                         prev.WheelSpeedRL = [...prev.WheelSpeedRL, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 4, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 4, 2, true)) 
                         }]
                         prev.WheelSpeedRR = [...prev.WheelSpeedRR, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 6, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 6, 2, true))
                         }]
                         return { ...prev };
                     }
@@ -120,34 +134,34 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                     prev => {
                         prev.SteeringAngle = [...prev.SteeringAngle, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 0, 2, true))
+                            data: Number(uint8ArrayToNumber(canData, 0, 2, true)) * 10 - 720
                         }]
                         prev.GForceLateral = [...prev.GForceLateral, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 2, 2, true))
+                            data: Number(uint8ArrayToNumber(canData, 2, 2, true)) * 1000 - 5
                         }]
                         prev.GForceLongitudional = [...prev.GForceLongitudional, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 4, 2, true))
+                            data: Number(uint8ArrayToNumber(canData, 4, 2, true)) * 1000 - 5
                         }]
-                        prev.GroundSpeed = [...prev.GroundSpeed, {
+                        prev.GForceVert = [...prev.GForceVert, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 6, 2, true))
+                            data: Number(uint8ArrayToNumber(canData, 6, 2, true)) * 1000 - 5
                         }]
                         return { ...prev };
                     }
                 )
                 break;
-            case 288:
+          case 288:
                 setCanList(
-                    prev => {
+                  prev => {
                         prev.BrakePressureFront = [...prev.BrakePressureFront, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 0, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 0, 2, true))
                         }]
                         prev.BrakePressureRear = [...prev.BrakePressureRear, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 2, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 2, 2, true))
                         }]
                         return { ...prev };
                     }
@@ -185,19 +199,19 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                     prev => {
                         prev.EngineCoolantTemperature = [...prev.EngineCoolantTemperature, {
                             timestamp: Number(timestamp),
-                            data: (Number(uint8ArrayToNumber(canData, 0, 2, true)) - 400) * 10
+                          data: ((Number(uint8ArrayToNumber(canData, 0, 2, true))) * 10) - 40
                         }]
                         prev.EngineOilTemperature = [...prev.EngineOilTemperature, {
                             timestamp: Number(timestamp),
-                            data: (Number(uint8ArrayToNumber(canData, 2, 2, true)) - 400) * 10
+                          data: ((Number(uint8ArrayToNumber(canData, 2, 2, true)) / 10)) + 40
                         }]
                         prev.ManifoldAirTemperature = [...prev.ManifoldAirTemperature, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 4, 2, true))
+                          data: (Number(uint8ArrayToNumber(canData, 4, 2, true)) * 10) - 40
                         }]
                         prev.EngineOilPressure = [...prev.EngineOilPressure, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 6, 2, true))
+                          data: (Number(uint8ArrayToNumber(canData, 6, 2, true)) / 10 + 40)
                         }]
                         return { ...prev };
                     }
@@ -242,11 +256,11 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                     prev => {
                         prev.Latitude = [...prev.Latitude, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 0, 4, true))
+                          data: Number(uint8ArrayToNumber(canData, 0, 4, true)) * 1000
                         }]
                         prev.Longitude = [...prev.Longitude, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 4, 4, true))
+                          data: Number(uint8ArrayToNumber(canData, 4, 4, true)) * 1000
                         }]
                         return { ...prev };
                     }
@@ -257,16 +271,35 @@ export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateActi
                     prev => {
                         prev.Altitude = [...prev.Altitude, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 0, 2, true))
+                          data: Number(uint8ArrayToNumber(canData, 0, 2, true)) / 10
                         }]
                         prev.GPSSpeed = [...prev.GPSSpeed, {
                             timestamp: Number(timestamp),
-                            data: Number(uint8ArrayToNumber(canData, 2, 4, true))
+                          data: Number(uint8ArrayToNumber(canData, 2, 4, true)) / 10
                         }]
                         return { ...prev };
                     }
                 )
                 break;
+          case 1024:
+            setCanList(
+              prev => {
+                prev.PDMBatteryVoltage = [...prev.PDMBatteryVoltage, {
+                  timestamp: Number(timestamp),
+                  data: Number(uint8ArrayToNumber(canData, 0, 2, true)) * 100 
+                }]
+                prev.PDMTotalCurrent = [...prev.PDMInternalTemp, {
+                  timestamp: Number(timestamp),
+                  data: (Number(uint8ArrayToNumber(canData, 2, 2, true)) * 10)
+                }]
+                prev.PDMInternalTemp = [...prev.PDMInternalTemp, {
+                  timestamp: Number(timestamp),
+                  data: Number((uint8ArrayToNumber(canData, 4, 2, true))) * 10
+                }]
+                return { ...prev };
+              }
+            )
+            break;
         }
     }
 }

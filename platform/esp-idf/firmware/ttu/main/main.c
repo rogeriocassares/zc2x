@@ -129,7 +129,7 @@ static void can_tx_task(void *arg) {
         .buffer = payload,
         .buffer_len = sizeof(payload),
     };
-
+    
     ESP_LOGI(TAG, "values: e: %d, m: %d, i: %d", extern_sensor_int, middle_sensor_int, internal_sensor_int);
 
     esp_err_t err =

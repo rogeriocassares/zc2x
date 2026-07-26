@@ -32,7 +32,7 @@ export function LineCanChart({title, data, unit} : {title : string, data:CanData
         <CardDescription>{unit}</CardDescription>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig}>
+        <ChartContainer config={chartConfig} className="w-[100%] h-[100%]">
           <LineChart
             accessibilityLayer
             data={data.sort((a,b)=>{return a.timestamp - b.timestamp}).slice(-100)}
