@@ -88,8 +88,16 @@
 #define OBU_NATS_BATCH_MAX_PACKETS 16
 #define OBU_NATS_BATCH_MAX_AGE_MS 30
 
-/* 6-byte device identifier for this OBU unit */
-#define OBU_DEVICE_ID {0x01, 0x00, 0x00, 0x00, 0x00, 0x00}
+/* No OBU_DEVICE_ID here anymore: this unit's 6-byte device identifier is
+ * read from the chip's own factory-burned WiFi MAC at boot instead (see
+ * main.c's app_main -> esp_read_mac(s_device_id, ESP_MAC_WIFI_STA)). A MAC
+ * is already globally unique per chip, so flashing N boards with this exact
+ * same firmware image gives N distinct device_ids automatically -- no
+ * per-unit constant to hand-edit, and no risk of two boards colliding
+ * because someone forgot to bump one (that used to be a real, documented
+ * footgun in this exact spot: the previous compile-time constant required
+ * remembering to change the last byte per board, and to avoid RSU's own
+ * prefix, before every flash of a new unit). */
 
 /* -----------------------------------------------------------------------
  * Tuning — queue/buffer/stack sizing. Bump these if you see "queue full"

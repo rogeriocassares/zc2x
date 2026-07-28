@@ -24,6 +24,14 @@ build/
 *.out
 *.exe # For any host-side utilities compiled on Windows
 
+# Node.js / Next.js (apps/web)
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
 # ESP-IDF specific build outputs
 *.bin
 *.elf

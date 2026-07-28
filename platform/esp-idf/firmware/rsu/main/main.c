@@ -26,6 +26,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "nvs_flash.h"
@@ -37,6 +38,20 @@
 #include "zc2x_packet.h"
 
 static const char *TAG = "RSU";
+
+/* Populated at boot from this chip's factory-burned WiFi station MAC (see
+ * app_main's call to esp_read_mac) -- globally unique per chip already, so
+ * flashing N boards with this exact firmware image gives N distinct IDs
+ * automatically, no per-unit config to hand-edit. Unlike OBU's own copy of
+ * this field, nothing actually reads s_device_id yet: RSU only relays OBU's
+ * packet bytes unmodified (RFC-0001), so the device_id field in every
+ * packet RSU forwards is always the originating OBU's, never RSU's own --
+ * see services/input/nats/internal/signals.go's "origin" comment. Computed
+ * and logged anyway so it's visible at boot for operator/diagnostic use
+ * now, and ready for whenever a future RSU-originated packet type
+ * (PacketTypeDiagnostic/PacketTypeSysEvt already exist in zc2x_packet_t's
+ * type enum) needs RSU's own identity. */
+static uint8_t s_device_id[ZC2X_DEVICE_ID_SIZE];
 
 /** Total bytes ever read from UART1 (any value). 0 = wir   ing/RF problem. */
 static uint32_t s_uart_rx_total;
@@ -720,6 +735,14 @@ static void nats_task(void *arg)
 void app_main(void)
 {
   ESP_LOGI(TAG, "ZC2X RSU starting");
+
+  /* esp_read_mac needs no WiFi/BT driver initialized -- it just derives the
+   * requested interface's MAC from the factory-burned base MAC in eFuse --
+   * so this is safe to call before wifi_init() below. */
+  ESP_ERROR_CHECK(esp_read_mac(s_device_id, ESP_MAC_WIFI_STA));
+  ESP_LOGI(TAG, "device_id (WiFi STA MAC): %02x%02x%02x%02x%02x%02x",
+           s_device_id[0], s_device_id[1], s_device_id[2],
+           s_device_id[3], s_device_id[4], s_device_id[5]);
 
   /* NVS must be initialised before WiFi */
   esp_err_t ret = nvs_flash_init();

@@ -23,6 +23,7 @@
 #include "esp_timer.h"
 #include "esp_task_wdt.h"
 #include "esp_wifi.h"
+#include "esp_mac.h"
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "nvs_flash.h"
@@ -51,7 +52,14 @@ typedef struct
   uint8_t data[8];
 } can_rx_frame_t;
 
-static const uint8_t s_device_id[ZC2X_DEVICE_ID_SIZE] = OBU_DEVICE_ID;
+/* Populated at boot from this chip's factory-burned WiFi station MAC (see
+ * app_main's call to esp_read_mac) -- not a compile-time constant anymore.
+ * A MAC is globally unique per chip already, which is exactly the property
+ * needed here: flashing N boards with the identical firmware image now
+ * gives N distinct device_ids for free, with no per-unit config to hand-edit
+ * and no risk of two boards colliding because someone forgot to bump a
+ * constant. */
+static uint8_t s_device_id[ZC2X_DEVICE_ID_SIZE];
 static uint32_t s_sequence = 0;
 static twai_node_handle_t s_twai_node;
 static QueueHandle_t s_can_rx_queue;
@@ -820,6 +828,17 @@ static void nats_task(void *arg)
 void app_main(void)
 {
   ESP_LOGI(TAG, "ZC2X OBU starting");
+
+  /* esp_read_mac needs no WiFi/BT driver initialized -- it just derives the
+   * requested interface's MAC from the factory-burned base MAC in eFuse --
+   * so this is safe to call before wifi_init() below. ESP_MAC_WIFI_STA
+   * specifically (not ESP_MAC_BASE) so device_id matches the MAC this same
+   * board actually presents on the network it publishes over -- traceable
+   * in a DHCP client list or packet capture, not just an opaque identifier. */
+  ESP_ERROR_CHECK(esp_read_mac(s_device_id, ESP_MAC_WIFI_STA));
+  ESP_LOGI(TAG, "device_id (WiFi STA MAC): %02x%02x%02x%02x%02x%02x",
+           s_device_id[0], s_device_id[1], s_device_id[2],
+           s_device_id[3], s_device_id[4], s_device_id[5]);
 
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||

@@ -19,20 +19,16 @@
 
 #if CONFIG_IDF_TARGET_ESP32C6
 /* ESP32-C6 Mini — main target */
-#define OBU_CAN_TX_PIN GPIO_NUM_4
-#define OBU_CAN_RX_PIN GPIO_NUM_5
-#define OBU_XBEE_TX_PIN GPIO_NUM_2
-#define OBU_XBEE_RX_PIN GPIO_NUM_3
+#define RSU_XBEE_TX_PIN GPIO_NUM_2
+#define RSU_XBEE_RX_PIN GPIO_NUM_3
 #elif CONFIG_IDF_TARGET_ESP32S3
-#error "OBU pins not yet defined for esp32s3 — fill in OBU_CAN_TX_PIN/OBU_CAN_RX_PIN and OBU_XBEE_TX_PIN/OBU_XBEE_RX_PIN for your S3 board wiring, then remove this #error."
+#error "RSU pins not yet defined for esp32s3 — fill in RSU_XBEE_TX_PIN/RSU_XBEE_RX_PIN for your S3 board wiring, then remove this #error."
 #elif CONFIG_IDF_TARGET_ESP32
 /* ESP32 secondary target target */
-#define OBU_CAN_TX_PIN GPIO_NUM_21
-#define OBU_CAN_RX_PIN GPIO_NUM_22
-#define OBU_XBEE_TX_PIN GPIO_NUM_16
-#define OBU_XBEE_RX_PIN GPIO_NUM_17
+#define RSU_XBEE_TX_PIN GPIO_NUM_16
+#define RSU_XBEE_RX_PIN GPIO_NUM_17
 #else
-#error "Unsupported IDF target for OBU — add a pin block for this chip above."
+#error "Unsupported IDF target for RSU — add a pin block for this chip above."
 #endif
 
 #define RSU_XBEE_BAUD 115200
@@ -90,8 +86,12 @@
 #define RSU_NATS_BATCH_MAX_PACKETS 16
 #define RSU_NATS_BATCH_MAX_AGE_MS 30
 
-/* 6-byte device identifier for this RSU unit */
-#define RSU_DEVICE_ID {0x02, 0x00, 0x00, 0x00, 0x00, 0x00}
+/* No RSU_DEVICE_ID here anymore: this unit's 6-byte device identifier is
+ * read from the chip's own factory-burned WiFi MAC at boot instead (see
+ * main.c's app_main -> esp_read_mac(s_device_id, ESP_MAC_WIFI_STA)), same
+ * as OBU's own device_config.h. A MAC is already globally unique per chip,
+ * so flashing N boards with this exact firmware image gives N distinct
+ * device_ids automatically -- no per-unit constant to hand-edit. */
 
 /* -----------------------------------------------------------------------
  * Tuning — queue/buffer/stack sizing and UART timeouts. Bump these if you
