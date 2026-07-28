@@ -103,9 +103,9 @@ static void can_tx_task(void *arg) {
     /* Persistent per-message storage — see the comment on
      * s_payload_buffers/s_frames above for why this can't be stack-local. */
     uint8_t id = data_packet.id;
-    uint16_t extern_sensor_int   = (uint16_t)(data_packet.extern_sensor   * 10);
-    uint16_t middle_sensor_int   = (uint16_t)(data_packet.middle_sensor   * 10);
-    uint16_t internal_sensor_int = (uint16_t)(data_packet.internal_sensor * 10);
+    int16_t extern_sensor_int   = (int16_t)((data_packet.extern_sensor   * 100));
+    int16_t middle_sensor_int   = (int16_t)((data_packet.middle_sensor   * 100));
+    int16_t internal_sensor_int = (int16_t)((data_packet.internal_sensor * 100));
     uint8_t payload[6] = {
       (extern_sensor_int >> 8) & 0xFF,
       extern_sensor_int & 0xFF,
@@ -129,7 +129,7 @@ static void can_tx_task(void *arg) {
         .buffer = payload,
         .buffer_len = sizeof(payload),
     };
-
+    
     ESP_LOGI(TAG, "values: e: %d, m: %d, i: %d", extern_sensor_int, middle_sensor_int, internal_sensor_int);
 
     esp_err_t err =
