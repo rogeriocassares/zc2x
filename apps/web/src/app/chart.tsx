@@ -51,6 +51,12 @@ export function Chart(){
         <LineCanChart title="Wheel Speed RL" data={canMap?.WheelSpeedRL} unit="km/h"/>
         <LineCanChart title="Wheel Speed RR" data={canMap?.WheelSpeedRR} unit="km/h"/>
       </div>
+      <div className="flex">
+        <LineCanChart title="SteeringAngle" data={canMap?.SteeringAngle} unit="º "/>
+        <LineCanChart title="G Force Lat" data={canMap?.GForceLateral} unit="G"/>
+        <LineCanChart title="G Force Long" data={canMap?.GForceLongitudional} unit="G"/>
+        <LineCanChart title="G Force Vert" data={canMap?.GForceVert} unit="G"/>
+      </div>
     </div>
   );
 }
