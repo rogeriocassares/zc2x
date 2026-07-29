@@ -93,18 +93,6 @@ export let GPSInit = {
   GPSSpeed: [],
 }
 
-export type CanMap = {
-    ExhaustCylinderTemperature1: CanData;
-    ExhaustCylinderTemperature2: CanData;
-    ExhaustCylinderTemperature3: CanData;
-}
-
-export let CanMapInit: CanMap = {
-    ExhaustCylinderTemperature1: [],
-    ExhaustCylinderTemperature2: [],
-    ExhaustCylinderTemperature3: [],
-}
-
 const NATS_PACKET_SIZE = 34;
 
 export function canParserMotor(message: Uint8Array, setCanList: Dispatch<SetStateAction<MotorMap>>) {
@@ -312,36 +300,6 @@ export function canParserGPS(message: Uint8Array, setCanList: Dispatch<SetStateA
     }
   }
 }
-
-
-export function canParser(message: Uint8Array, setCanList: Dispatch<SetStateAction<CanMap>>) {
-  for(let offset = 0; offset < message.length; offset++){
-    const {timestamp, canId, canData} = getCanInfo(message, offset);
-        switch (canId) {
-            case 544:
-                setCanList(
-                    prev => {
-                        prev.ExhaustCylinderTemperature1 = [...prev.ExhaustCylinderTemperature1, {
-                            timestamp: timestamp,
-                            data: uint8ArrayToNumber(canData, 0, 2, true)
-                        }]
-                        prev.ExhaustCylinderTemperature2 = [...prev.ExhaustCylinderTemperature2, {
-                            timestamp: timestamp,
-                            data: uint8ArrayToNumber(canData, 2, 2, true)
-                        }]
-                        prev.ExhaustCylinderTemperature3 = [...prev.ExhaustCylinderTemperature3, {
-                            timestamp: timestamp,
-                            data: uint8ArrayToNumber(canData, 4, 2, true)
-                        }]
-                        return { ...prev };
-                    }
-                )
-                break;
-        }
-    }
-}
-
-
 
 
 function uint8ArrayToNumber(byteArray: Uint8Array, offset: number, size: number, bigEndian: boolean): number {

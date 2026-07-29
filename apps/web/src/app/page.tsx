@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Chart } from "./chart";
 
 export default function Home() {
   return (

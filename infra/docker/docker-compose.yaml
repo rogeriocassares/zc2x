@@ -1,3 +1,16 @@
+# Full ZC2X stack: nats, InfluxDB3 + Grafana for storage/visualization, the
+# input service (NATS -> JetStream decode/dedup) and output service
+# (JetStream -> InfluxDB3 write) that connect them, and the web dashboard.
+# Everything except the third-party images (nats/influxdb/grafana) is built
+# locally from source (context: the service's own directory -- neither
+# apps/web nor services/* need repo-root context, since this isn't a
+# pnpm/turbo or Go-multi-module workspace).
+#
+# Run from THIS directory:
+#   Subir:  docker compose up -d --build
+#   Parar:  docker compose down (dados ficam nos volumes)
+#   Zerar:  docker compose down -v (apaga os volumes -- cuidado!)
+#   Logs:   docker compose logs -f web input influxdb3-output
 services:
   nats:
     image: nats:2.12.4-alpine3.22
@@ -35,7 +48,7 @@ services:
       - --node-id=zc2x-node0
       - --object-store=file
       - --data-dir=/var/lib/influxdb3
-      # - --disable-authz=health
+      - --disable-authz=health
     ports:
       - "8181:8181" # HTTP API: writes (influxdb3-go client) + SQL queries (Grafana)
     volumes:
@@ -116,6 +129,53 @@ services:
       - INFLUXDB_HOST=http://influxdb3-core:8181
     env_file:
       - ./../../.env
+
+  # NATS Core (zc2x.can.*) -> JetStream decode/dedup/republish -- see
+  # ../../services/input/nats. This is what actually turns raw OBU/RSU
+  # packets into the zc2x.js.telemetry.> stream everything else (influxdb3-
+  # output above, web's live dashboard below) consumes; without it running,
+  # both of those sit idle with nothing to read. Every other env var
+  # (JETSTREAM_STREAM, NATS_DEDUP_WINDOW, etc.) has a sane default in
+  # cmd/main.go, so only NATS_URL needs overriding to the in-network name.
+  input:
+    build:
+      context: ../../services/input/nats
+    container_name: zc2x-input
+    restart: unless-stopped
+    depends_on:
+      nats:
+        condition: service_started
+    environment:
+      - NATS_URL=nats://nats:4222
+
+  # Live telemetry dashboard (apps/web/src/app/can2) -- reads
+  # zc2x.js.telemetry.> directly from the browser via NATS's WebSocket port
+  # (4223 above), not through this container, so NEXT_PUBLIC_NATS_URL has to
+  # resolve from wherever the browser actually runs (the host), not the
+  # Docker network -- ws://localhost:4223 works as long as nats's port
+  # mapping above is in place. It's a build arg, not runtime environment:
+  # Next.js inlines NEXT_PUBLIC_* into the client bundle at `next build`
+  # time (see apps/web/Dockerfile), so setting it only at container start
+  # would be too late. The ${...:-default} form means this works even
+  # without `--env-file ../../.env` (compose's build-arg substitution reads
+  # its own process environment, not env_file:, which only applies to the
+  # container's runtime env -- see influxdb3-explorer's comment above for
+  # the same caveat).
+  #
+  # Published on 3001, not 3000: grafana above already claims 3000 on the
+  # host.
+  web:
+    build:
+      context: ../../apps/web
+      args:
+        NEXT_PUBLIC_NATS_URL: ${NEXT_PUBLIC_NATS_URL:-ws://localhost:4223}
+    container_name: zc2x-web
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    depends_on:
+      nats:
+        condition: service_started
 
 volumes:
   nats_data:
