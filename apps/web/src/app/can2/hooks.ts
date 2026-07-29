@@ -7,8 +7,19 @@ import type {
   ConnectionStatus,
   DeviceList,
   MessageSnapshot,
+  OriginLastSeen,
 } from "./telemetry-store";
+import { useNow } from "./use-now";
 import { useSelectedDevice } from "./use-selection";
+
+// A link is considered offline if nothing with its origin has arrived in
+// this long -- matches SignalRow's own per-value staleness threshold
+// (components/SignalRow.tsx), so "this signal looks stale" and "this link
+// looks offline" agree with each other instead of using two different
+// definitions of "recent."
+const LINK_STALE_AFTER_MS = 5000;
+
+export type LinkStatus = "online" | "offline" | "unknown";
 
 // useSyncExternalStore, not useEffect+useState: telemetryStore is mutable
 // state that lives outside React (a NATS subscription accumulating live
@@ -89,4 +100,32 @@ export function useActiveDeviceKey(): string | null {
   return selectedKey && deviceList.some((d) => d.key === selectedKey)
     ? selectedKey
     : (deviceList[0]?.key ?? null);
+}
+
+// Last-seen timestamp per origin ("obu"/"rsu"), across every device -- rare
+// re-render trigger in shape (a 2-entry Map), but the Map identity itself
+// changes on every message (see telemetry-store.ts's flush), which is what
+// lets useLinkStatus below notice new data without polling the store.
+function useOriginLastSeen(): OriginLastSeen {
+  return useSyncExternalStore(
+    telemetryStore.subscribeOriginLastSeen,
+    telemetryStore.getOriginLastSeenSnapshot,
+    telemetryStore.getServerOriginLastSeenSnapshot
+  );
+}
+
+// Whether a link (origin: "obu" direct WiFi, or "rsu" XBee relay) is
+// currently delivering data. "unknown" until the first record with that
+// origin ever arrives (there's nothing to judge staleness against yet);
+// after that, "online" while at least one record arrived within
+// LINK_STALE_AFTER_MS of now, "offline" once that window has passed with no
+// new one -- ticking on useNow, not just on new messages, so a link that
+// simply stops sending is noticed even though nothing changed to re-render
+// the store on its own.
+export function useLinkStatus(origin: string): LinkStatus {
+  const lastSeen = useOriginLastSeen();
+  const now = useNow(1000);
+  const t = lastSeen.get(origin);
+  if (t === undefined) return "unknown";
+  return now - t <= LINK_STALE_AFTER_MS ? "online" : "offline";
 }
